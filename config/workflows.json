@@ -1,12 +1,10 @@
 {
-    "Test Sequenziale": {
+    "Test Logging Durata": {
         "tasks": [
             "tasks/task1.py",
-            "tasks/task2.py"
+            "tasks/task3.py"
         ],
-        "schedule_time": "11:18",
-        "schedule_days": [
-            0
-        ]
+        "schedule_time": "04:23",
+        "schedule_days": [ 0 ]
     }
 }

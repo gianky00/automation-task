@@ -37,6 +37,7 @@ def execute_flow(flow_name, tasks):
             break # Interrompe il for loop, terminando il flusso
 
         try:
+            start_time = time.monotonic()
             # subprocess.run attende la fine del processo, garantendo la sequenzialità
             result = subprocess.run(
                 ["python", task_path],
@@ -44,15 +45,17 @@ def execute_flow(flow_name, tasks):
                 text=True,
                 check=False # Non solleva eccezioni per returncode != 0
             )
+            end_time = time.monotonic()
+            duration = end_time - start_time
 
             # Logga l'output standard del task
             if result.stdout:
                 logging.info(f"[{flow_name}] Output di '{task_path}':\n{result.stdout.strip()}")
 
             if result.returncode == 0:
-                logging.info(f"[{flow_name}] Task '{task_path}' completato con successo.")
+                logging.info(f"[{flow_name}] Task '{task_path}' completato con successo in {duration:.2f} secondi.")
             else:
-                logging.error(f"[{flow_name}] ERRORE: Task '{task_path}' terminato con codice {result.returncode}.")
+                logging.error(f"[{flow_name}] ERRORE: Task '{task_path}' terminato con codice {result.returncode} dopo {duration:.2f} secondi.")
                 # Logga l'output di errore
                 if result.stderr:
                     logging.error(f"[{flow_name}] Errore di '{task_path}':\n{result.stderr.strip()}")
