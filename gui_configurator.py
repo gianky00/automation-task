@@ -54,15 +54,15 @@ class WorkflowConfiguratorApp:
         self.workflows = {}
         self.selected_workflow_name = None
 
-        self.log_queue = queue.Queue()
-        self.queue_handler = QueueHandler(self.log_queue)
-
-        # Configura il logger per usare sia il file handler che il queue handler
-        logger = logging.getLogger()
-        logger.addHandler(self.queue_handler)
-
+        # 1. Configura il logging di base (file e console)
         os.makedirs(CONFIG_DIR, exist_ok=True)
         setup_logging()
+
+        # 2. Aggiungi l'handler per la GUI
+        self.log_queue = queue.Queue()
+        self.queue_handler = QueueHandler(self.log_queue)
+        logging.getLogger().addHandler(self.queue_handler)
+
         self.load_workflows()
         self.create_widgets()
         self.populate_workflows_list()
