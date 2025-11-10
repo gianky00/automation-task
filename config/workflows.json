@@ -1,12 +1,11 @@
 {
     "Test Esecuzione Generalizzata": {
         "tasks": [
-            "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti_ANALISI.py",
-            "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti.py"
+            "tasks/task1.py",
+            "tasks/task.bat",
+            "tasks/task.ps1"
         ],
         "schedule_time": "05:51",
-        "schedule_days": [
-            0
-        ]
+        "schedule_days": [ 0 ]
     }
 }
