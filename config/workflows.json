@@ -1,0 +1,11 @@
+{
+    "Test Esecuzione Generalizzata": {
+        "tasks": [
+            "tasks/task1.py",
+            "tasks/task.bat",
+            "tasks/task.ps1"
+        ],
+        "schedule_time": "05:51",
+        "schedule_days": [ 0 ]
+    }
+}
