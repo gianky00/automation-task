@@ -67,6 +67,9 @@ def execute_flow(flow_name, tasks):
 
             if result.returncode == 0:
                 logging.info(f"[{flow_name}] Task '{task_path}' completato con successo in {duration:.2f} secondi.")
+                # Se non è l'ultimo task, annuncia il prossimo
+                if i < len(tasks) - 1:
+                    logging.info(f"[{flow_name}] Prossimo task: '{tasks[i+1]}'")
             else:
                 logging.error(f"[{flow_name}] ERRORE: Task '{task_path}' terminato con codice {result.returncode} dopo {duration:.2f} secondi.")
                 if result.stderr:
