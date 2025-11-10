@@ -9,53 +9,30 @@ CONFIG_DIR = "config"
 CONFIG_FILE = os.path.join(CONFIG_DIR, "workflows.json")
 
 
-def parse_task_xml(filepath):
+def _parse_workflow_from_xml(filepath):
     """
-    Estrae i dati di un flusso da un file XML dell'Utilità di Pianificazione di Windows.
-    Solleva eccezioni in caso di errori di parsing o dati mancanti.
+    Estrae i dati essenziali per un nuovo flusso (nome e primo task)
+    da un file XML dell'Utilità di Pianificazione di Windows.
+    Ignora la pianificazione.
     """
-    # Gestione del namespace
     namespaces = {'win': 'http://schemas.microsoft.com/windows/2004/02/mit/task'}
     tree = ET.parse(filepath)
     root = tree.getroot()
 
-    # Estrazione dei dati
     description_node = root.find('win:RegistrationInfo/win:Description', namespaces)
     flow_name = description_node.text.strip() if description_node is not None and description_node.text else "Flusso Importato"
 
-    start_boundary_node = root.find('win:Triggers/win:CalendarTrigger/win:StartBoundary', namespaces)
-    if start_boundary_node is None:
-        raise ValueError("Impossibile trovare 'StartBoundary' nel trigger. Assicurarsi che sia un trigger basato su calendario.")
-
-    time_str = start_boundary_node.text.split('T')[1]
-    schedule_time = f"{time_str.split(':')[0]}:{time_str.split(':')[1]}"
-
-    days_of_week_node = root.find('win:Triggers/win:CalendarTrigger/win:ScheduleByWeek/win:DaysOfWeek', namespaces)
-    schedule_days = []
-    if days_of_week_node is not None:
-        day_map = {'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6}
-        for day_node in days_of_week_node:
-            day_name = day_node.tag.replace(f"{{{namespaces['win']}}}", "")
-            if day_name in day_map:
-                schedule_days.append(day_map[day_name])
-
     arguments_node = root.find('win:Actions/win:Exec/win:Arguments', namespaces)
     if arguments_node is None or not arguments_node.text:
-        raise ValueError("Impossibile trovare il percorso dello script negli argomenti dell'azione.")
+        raise ValueError("Impossibile trovare il nodo <Arguments> nell'XML.")
 
     match = re.search(r'["\'](.*\.py)["\']', arguments_node.text)
     if not match:
-        raise ValueError("Nessun file .py trovato negli argomenti. L'argomento deve contenere il percorso a uno script Python.")
+        raise ValueError("Nessun file .py trovato negli argomenti.")
+
     task_path = match.group(1)
 
-    return {
-        "name": flow_name,
-        "data": {
-            "tasks": [task_path],
-            "schedule_time": schedule_time,
-            "schedule_days": sorted(schedule_days)
-        }
-    }
+    return {"name": flow_name, "task": task_path}
 
 
 class WorkflowConfiguratorApp:
@@ -108,8 +85,9 @@ class WorkflowConfiguratorApp:
         btn_frame_workflows.pack(fill=tk.X, pady=5)
         ttk.Button(btn_frame_workflows, text="Aggiungi Nuovo", command=self.add_new_workflow).pack(side=tk.LEFT, expand=True, fill=tk.X)
         ttk.Button(btn_frame_workflows, text="Rimuovi", command=self.delete_selected_workflow).pack(side=tk.LEFT, expand=True, fill=tk.X)
-        ttk.Separator(left_pane, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
-        ttk.Button(left_pane, text="Importa da XML...", command=self.import_from_xml).pack(fill=tk.X)
+
+        ttk.Separator(left_pane, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 5))
+        ttk.Button(left_pane, text="Importa Flusso da XML...", command=self.import_workflow_from_xml).pack(fill=tk.X)
 
         details_frame = ttk.LabelFrame(right_pane, text="Dettagli Flusso", padding="10")
         details_frame.pack(fill=tk.BOTH, expand=True)
@@ -220,28 +198,37 @@ class WorkflowConfiguratorApp:
             self.clear_details_panel()
             self.populate_workflows_list()
 
-    def import_from_xml(self):
+    def import_workflow_from_xml(self):
         filepath = filedialog.askopenfilename(
-            title="Seleziona il file XML dell'Utilità di Pianificazione",
+            title="Seleziona il file XML del Task da importare",
             filetypes=[("XML files", "*.xml"), ("All files", "*.*")]
         )
         if not filepath: return
-        try:
-            imported_flow = parse_task_xml(filepath)
-            flow_name = imported_flow["name"]
 
+        try:
+            imported_data = _parse_workflow_from_xml(filepath)
+            flow_name = imported_data["name"]
+            task_path = imported_data["task"]
+
+            # Assicura un nome univoco
             original_flow_name = flow_name
             i = 1
             while flow_name in self.workflows:
                 flow_name = f"{original_flow_name} ({i})"
                 i += 1
 
-            self.workflows[flow_name] = imported_flow["data"]
+            # Crea il nuovo flusso con pianificazione di default
+            self.workflows[flow_name] = {
+                "tasks": [task_path],
+                "schedule_time": "09:00", # Default
+                "schedule_days": []       # Default
+            }
+
             self.populate_workflows_list()
-            messagebox.showinfo("Successo", f"Flusso '{flow_name}' importato con successo!")
+            messagebox.showinfo("Successo", f"Flusso '{flow_name}' importato con successo con una pianificazione predefinita.")
 
         except (ET.ParseError, ValueError) as e:
-            messagebox.showerror("Errore di Importazione", f"Impossibile importare il file:\n{e}")
+            messagebox.showerror("Errore di Importazione", f"Impossibile importare il flusso:\n{e}")
         except Exception as e:
             messagebox.showerror("Errore Inatteso", f"Si è verificato un errore: {e}")
 
