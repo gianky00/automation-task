@@ -1,0 +1,12 @@
+{
+    "Test Sequenziale": {
+        "tasks": [
+            "tasks/task1.py",
+            "tasks/task2.py"
+        ],
+        "schedule_time": "11:18",
+        "schedule_days": [
+            0
+        ]
+    }
+}
