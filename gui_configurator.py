@@ -4,6 +4,8 @@ import json
 import os
 import xml.etree.ElementTree as ET
 import re
+import threading
+from core_logic import setup_logging, execute_flow
 
 CONFIG_DIR = "config"
 CONFIG_FILE = os.path.join(CONFIG_DIR, "workflows.json")
@@ -41,6 +43,7 @@ class WorkflowConfiguratorApp:
         self.selected_workflow_name = None
 
         os.makedirs(CONFIG_DIR, exist_ok=True)
+        setup_logging() # Configura il logging per la GUI
         self.load_workflows()
         self.create_widgets()
         self.populate_workflows_list()
@@ -119,8 +122,15 @@ class WorkflowConfiguratorApp:
         days = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
         for i, day in enumerate(days):
             ttk.Checkbutton(days_frame, text=day, variable=self.day_vars[i]).pack(side=tk.LEFT)
-        save_button = ttk.Button(right_pane, text="SALVA TUTTE LE MODIFICHE", command=self.save_workflows)
-        save_button.pack(fill=tk.X, pady=10)
+
+        action_frame = ttk.Frame(right_pane)
+        action_frame.pack(fill=tk.X, pady=10)
+
+        run_now_button = ttk.Button(action_frame, text="Esegui Ora", command=self.run_workflow_now)
+        run_now_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
+
+        save_button = ttk.Button(action_frame, text="SALVA TUTTE LE MODIFICHE", command=self.save_workflows)
+        save_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5, 0))
 
     def populate_workflows_list(self):
         self.workflows_listbox.delete(0, tk.END)
@@ -191,6 +201,27 @@ class WorkflowConfiguratorApp:
             self.selected_workflow_name = None
             self.clear_details_panel()
             self.populate_workflows_list()
+
+    def run_workflow_now(self):
+        if not self.selected_workflow_name:
+            messagebox.showwarning("Azione non permessa", "Seleziona un flusso di lavoro da eseguire.")
+            return
+
+        flow_name = self.selected_workflow_name
+        tasks = list(self.tasks_listbox.get(0, tk.END))
+
+        if not tasks:
+            messagebox.showinfo("Informazione", f"Il flusso '{flow_name}' non ha task da eseguire.")
+            return
+
+        messagebox.showinfo("Avvio Manuale", f"Avvio del flusso '{flow_name}' in background. Controlla i log per i dettagli.")
+
+        # Esegui in un thread per non bloccare la GUI
+        execution_thread = threading.Thread(
+            target=execute_flow,
+            args=(f"{flow_name} (Manuale)", tasks)
+        )
+        execution_thread.start()
 
     def import_task_from_xml(self):
         if not self.selected_workflow_name:
