@@ -9,18 +9,15 @@ CONFIG_DIR = "config"
 CONFIG_FILE = os.path.join(CONFIG_DIR, "workflows.json")
 
 
-def _parse_workflow_from_xml(filepath):
+def _parse_task_path_from_xml(filepath):
     """
-    Estrae i dati essenziali per un nuovo flusso (nome e primo task)
-    da un file XML dell'Utilità di Pianificazione di Windows.
-    Ignora la pianificazione.
+    Estrae il percorso di uno script Python da un file XML
+    dell'Utilità di Pianificazione di Windows.
+    Solleva eccezioni in caso di errori.
     """
     namespaces = {'win': 'http://schemas.microsoft.com/windows/2004/02/mit/task'}
     tree = ET.parse(filepath)
     root = tree.getroot()
-
-    description_node = root.find('win:RegistrationInfo/win:Description', namespaces)
-    flow_name = description_node.text.strip() if description_node is not None and description_node.text else "Flusso Importato"
 
     arguments_node = root.find('win:Actions/win:Exec/win:Arguments', namespaces)
     if arguments_node is None or not arguments_node.text:
@@ -28,11 +25,9 @@ def _parse_workflow_from_xml(filepath):
 
     match = re.search(r'["\'](.*\.py)["\']', arguments_node.text)
     if not match:
-        raise ValueError("Nessun file .py trovato negli argomenti.")
+        raise ValueError("Nessun file .py trovato negli argomenti. L'argomento deve contenere il percorso a uno script Python.")
 
-    task_path = match.group(1)
-
-    return {"name": flow_name, "task": task_path}
+    return match.group(1)
 
 
 class WorkflowConfiguratorApp:
@@ -86,9 +81,6 @@ class WorkflowConfiguratorApp:
         ttk.Button(btn_frame_workflows, text="Aggiungi Nuovo", command=self.add_new_workflow).pack(side=tk.LEFT, expand=True, fill=tk.X)
         ttk.Button(btn_frame_workflows, text="Rimuovi", command=self.delete_selected_workflow).pack(side=tk.LEFT, expand=True, fill=tk.X)
 
-        ttk.Separator(left_pane, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 5))
-        ttk.Button(left_pane, text="Importa Flusso da XML...", command=self.import_workflow_from_xml).pack(fill=tk.X)
-
         details_frame = ttk.LabelFrame(right_pane, text="Dettagli Flusso", padding="10")
         details_frame.pack(fill=tk.BOTH, expand=True)
         name_frame = ttk.Frame(details_frame)
@@ -103,6 +95,7 @@ class WorkflowConfiguratorApp:
         task_buttons_frame = ttk.Frame(tasks_frame)
         task_buttons_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
         ttk.Button(task_buttons_frame, text="Aggiungi Task", command=self.add_task).pack(fill=tk.X, pady=2)
+        ttk.Button(task_buttons_frame, text="Importa Task da XML...", command=self.import_task_from_xml).pack(fill=tk.X, pady=2)
         ttk.Button(task_buttons_frame, text="Rimuovi Task", command=self.remove_task).pack(fill=tk.X, pady=2)
         ttk.Separator(task_buttons_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
         ttk.Button(task_buttons_frame, text="Sposta Su", command=self.move_task_up).pack(fill=tk.X, pady=2)
@@ -198,7 +191,11 @@ class WorkflowConfiguratorApp:
             self.clear_details_panel()
             self.populate_workflows_list()
 
-    def import_workflow_from_xml(self):
+    def import_task_from_xml(self):
+        if not self.selected_workflow_name:
+            messagebox.showwarning("Azione non permessa", "Seleziona prima un flusso di lavoro a cui aggiungere il task.")
+            return
+
         filepath = filedialog.askopenfilename(
             title="Seleziona il file XML del Task da importare",
             filetypes=[("XML files", "*.xml"), ("All files", "*.*")]
@@ -206,29 +203,12 @@ class WorkflowConfiguratorApp:
         if not filepath: return
 
         try:
-            imported_data = _parse_workflow_from_xml(filepath)
-            flow_name = imported_data["name"]
-            task_path = imported_data["task"]
-
-            # Assicura un nome univoco
-            original_flow_name = flow_name
-            i = 1
-            while flow_name in self.workflows:
-                flow_name = f"{original_flow_name} ({i})"
-                i += 1
-
-            # Crea il nuovo flusso con pianificazione di default
-            self.workflows[flow_name] = {
-                "tasks": [task_path],
-                "schedule_time": "09:00", # Default
-                "schedule_days": []       # Default
-            }
-
-            self.populate_workflows_list()
-            messagebox.showinfo("Successo", f"Flusso '{flow_name}' importato con successo con una pianificazione predefinita.")
+            task_path = _parse_task_path_from_xml(filepath)
+            self.tasks_listbox.insert(tk.END, task_path)
+            messagebox.showinfo("Successo", f"Task '{os.path.basename(task_path)}' importato e aggiunto al flusso '{self.selected_workflow_name}'.")
 
         except (ET.ParseError, ValueError) as e:
-            messagebox.showerror("Errore di Importazione", f"Impossibile importare il flusso:\n{e}")
+            messagebox.showerror("Errore di Importazione", f"Impossibile importare il task:\n{e}")
         except Exception as e:
             messagebox.showerror("Errore Inatteso", f"Si è verificato un errore: {e}")
 
