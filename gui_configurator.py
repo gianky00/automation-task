@@ -4,8 +4,9 @@ import json
 import os
 import xml.etree.ElementTree as ET
 import re
-import threading
-from core_logic import setup_logging, execute_flow
+import subprocess
+import sys
+from core_logic import setup_logging
 
 CONFIG_DIR = "config"
 CONFIG_FILE = os.path.join(CONFIG_DIR, "workflows.json")
@@ -214,14 +215,24 @@ class WorkflowConfiguratorApp:
             messagebox.showinfo("Informazione", f"Il flusso '{flow_name}' non ha task da eseguire.")
             return
 
-        messagebox.showinfo("Avvio Manuale", f"Avvio del flusso '{flow_name}' in background. Controlla i log per i dettagli.")
+        try:
+            # Costruisci il comando per lanciare lo script CLI in una nuova console
+            command = [
+                sys.executable, # Usa lo stesso interprete Python che esegue la GUI
+                "run_workflow_cli.py",
+                f"{flow_name} (Manuale)",
+            ]
+            command.extend(tasks)
 
-        # Esegui in un thread per non bloccare la GUI
-        execution_thread = threading.Thread(
-            target=execute_flow,
-            args=(f"{flow_name} (Manuale)", tasks)
-        )
-        execution_thread.start()
+            # Flag specifico per Windows per creare una nuova finestra di console
+            flags = subprocess.CREATE_NEW_CONSOLE
+
+            subprocess.Popen(command, creationflags=flags)
+
+            messagebox.showinfo("Avvio Manuale", f"Il flusso '{flow_name}' è stato avviato in una nuova finestra.")
+
+        except Exception as e:
+            messagebox.showerror("Errore Avvio", f"Impossibile avviare il flusso in una nuova finestra:\n{e}")
 
     def import_task_from_xml(self):
         if not self.selected_workflow_name:
