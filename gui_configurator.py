@@ -23,9 +23,10 @@ def _parse_task_path_from_xml(filepath):
     if arguments_node is None or not arguments_node.text:
         raise ValueError("Impossibile trovare il nodo <Arguments> nell'XML.")
 
-    match = re.search(r'["\'](.*\.py)["\']', arguments_node.text)
+    # Espressione regolare generalizzata per .py, .bat, .ps1
+    match = re.search(r'["\'](.*?\.(?:py|bat|ps1))["\']', arguments_node.text, re.IGNORECASE)
     if not match:
-        raise ValueError("Nessun file .py trovato negli argomenti. L'argomento deve contenere il percorso a uno script Python.")
+        raise ValueError("Nessun file supportato (.py, .bat, .ps1) trovato negli argomenti.")
 
     return match.group(1)
 
@@ -213,7 +214,16 @@ class WorkflowConfiguratorApp:
             messagebox.showerror("Errore Inatteso", f"Si è verificato un errore: {e}")
 
     def add_task(self):
-        filepaths = filedialog.askopenfilenames(title="Seleziona script Python", filetypes=[("Python files", "*.py"), ("All files", "*.*")])
+        filepaths = filedialog.askopenfilenames(
+            title="Seleziona Script",
+            filetypes=[
+                ("Script Supportati", "*.py *.bat *.ps1"),
+                ("Python files", "*.py"),
+                ("Batch files", "*.bat"),
+                ("PowerShell files", "*.ps1"),
+                ("All files", "*.*")
+            ]
+        )
         for filepath in filepaths:
             try:
                 rel_path = os.path.relpath(filepath)

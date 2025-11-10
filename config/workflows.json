@@ -1,10 +1,11 @@
 {
-    "Test Logging Durata": {
+    "Test Esecuzione Generalizzata": {
         "tasks": [
             "tasks/task1.py",
-            "tasks/task3.py"
+            "tasks/task.bat",
+            "tasks/task.ps1"
         ],
-        "schedule_time": "04:23",
+        "schedule_time": "05:51",
         "schedule_days": [ 0 ]
     }
 }

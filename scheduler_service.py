@@ -37,13 +37,28 @@ def execute_flow(flow_name, tasks):
             break # Interrompe il for loop, terminando il flusso
 
         try:
+            command = []
+            file_extension = os.path.splitext(task_path)[1].lower()
+
+            if file_extension == '.py':
+                command = ["python", task_path]
+            elif file_extension == '.bat':
+                command = ["cmd", "/c", task_path]
+            elif file_extension == '.ps1':
+                command = ["powershell", "-ExecutionPolicy", "Bypass", "-File", task_path]
+            else:
+                logging.error(f"[{flow_name}] ERRORE: Tipo di file non supportato '{file_extension}'. Salto del task.")
+                continue # Salta al prossimo task nel loop
+
             start_time = time.monotonic()
             # subprocess.run attende la fine del processo, garantendo la sequenzialità
             result = subprocess.run(
-                ["python", task_path],
+                command,
                 capture_output=True,
                 text=True,
-                check=False # Non solleva eccezioni per returncode != 0
+                check=False, # Non solleva eccezioni per returncode != 0
+                encoding='utf-8', # Esplicita l'encoding per coerenza
+                errors='replace'  # Gestisce caratteri non validi nell'output
             )
             end_time = time.monotonic()
             duration = end_time - start_time
