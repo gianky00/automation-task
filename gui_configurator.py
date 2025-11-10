@@ -1,14 +1,26 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, scrolledtext
 import json
 import os
 import xml.etree.ElementTree as ET
 import re
 import threading
+import queue
+import logging
 from core_logic import setup_logging, execute_flow
 
 CONFIG_DIR = "config"
 CONFIG_FILE = os.path.join(CONFIG_DIR, "workflows.json")
+
+
+class QueueHandler(logging.Handler):
+    """Classe per inviare i record di logging a una coda."""
+    def __init__(self, log_queue):
+        super().__init__()
+        self.log_queue = log_queue
+
+    def emit(self, record):
+        self.log_queue.put(self.format(record))
 
 
 def _parse_task_path_from_xml(filepath):
@@ -37,16 +49,26 @@ class WorkflowConfiguratorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Configuratore Flussi di Lavoro")
-        self.root.geometry("900x600")
+        self.root.geometry("900x750") # Aumenta l'altezza per i log
 
         self.workflows = {}
         self.selected_workflow_name = None
 
+        # 1. Configura il logging di base (file e console)
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        setup_logging() # Configura il logging per la GUI
+        setup_logging()
+
+        # 2. Aggiungi l'handler per la GUI
+        self.log_queue = queue.Queue()
+        self.queue_handler = QueueHandler(self.log_queue)
+        logging.getLogger().addHandler(self.queue_handler)
+
         self.load_workflows()
         self.create_widgets()
         self.populate_workflows_list()
+
+        # Avvia il polling della coda dei log
+        self.root.after(100, self.poll_log_queue)
 
     def load_workflows(self):
         try:
@@ -132,6 +154,13 @@ class WorkflowConfiguratorApp:
         save_button = ttk.Button(action_frame, text="SALVA TUTTE LE MODIFICHE", command=self.save_workflows)
         save_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5, 0))
 
+        # --- Area Log ---
+        log_frame = ttk.LabelFrame(self.root, text="Log di Esecuzione", padding="10")
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+        self.log_widget = scrolledtext.ScrolledText(log_frame, state='disabled', wrap=tk.WORD, height=10)
+        self.log_widget.pack(fill=tk.BOTH, expand=True)
+
     def populate_workflows_list(self):
         self.workflows_listbox.delete(0, tk.END)
         for name in sorted(self.workflows.keys()):
@@ -214,13 +243,17 @@ class WorkflowConfiguratorApp:
             messagebox.showinfo("Informazione", f"Il flusso '{flow_name}' non ha task da eseguire.")
             return
 
-        messagebox.showinfo("Avvio Manuale", f"Avvio del flusso '{flow_name}' in background. Controlla i log per i dettagli.")
+        # Pulisci i log precedenti prima di una nuova esecuzione
+        self.log_widget.configure(state='normal')
+        self.log_widget.delete('1.0', tk.END)
+        self.log_widget.configure(state='disabled')
 
         # Esegui in un thread per non bloccare la GUI
         execution_thread = threading.Thread(
             target=execute_flow,
             args=(f"{flow_name} (Manuale)", tasks)
         )
+        execution_thread.daemon = True # Permette all'app di chiudersi anche se il thread è in esecuzione
         execution_thread.start()
 
     def import_task_from_xml(self):
@@ -287,6 +320,24 @@ class WorkflowConfiguratorApp:
                 self.tasks_listbox.delete(i)
                 self.tasks_listbox.insert(i + 1, text)
                 self.tasks_listbox.selection_set(i + 1)
+
+    def display_log_record(self, record):
+        """Aggiunge un record di log al widget di testo."""
+        self.log_widget.configure(state='normal')
+        self.log_widget.insert(tk.END, record + '\n')
+        self.log_widget.configure(state='disabled')
+        self.log_widget.yview(tk.END) # Auto-scroll
+
+    def poll_log_queue(self):
+        """Controlla la coda per nuovi log e li visualizza."""
+        while True:
+            try:
+                record = self.log_queue.get(block=False)
+                self.display_log_record(record)
+            except queue.Empty:
+                break
+        # Richiama se stessa dopo 100ms
+        self.root.after(100, self.poll_log_queue)
 
 if __name__ == "__main__":
     root = tk.Tk()
