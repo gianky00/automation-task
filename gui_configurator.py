@@ -53,6 +53,7 @@ class WorkflowConfiguratorApp:
 
         self.workflows = {}
         self.selected_workflow_name = None
+        self.current_tasks = [] # Mantiene la lista di dizionari {'name': ..., 'path': ...}
 
         # 1. Configura il logging di base (file e console)
         os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -114,10 +115,11 @@ class WorkflowConfiguratorApp:
         ttk.Label(name_frame, text="Nome Flusso:", width=15).pack(side=tk.LEFT)
         self.flow_name_entry = ttk.Entry(name_frame)
         self.flow_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tasks_frame = ttk.LabelFrame(details_frame, text="Task Sequenziali (.py)")
+        tasks_frame = ttk.LabelFrame(details_frame, text="Task Sequenziali (doppio click per modificare)")
         tasks_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         self.tasks_listbox = tk.Listbox(tasks_frame)
         self.tasks_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.tasks_listbox.bind("<Double-1>", self.edit_selected_task)
         task_buttons_frame = ttk.Frame(tasks_frame)
         task_buttons_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
         ttk.Button(task_buttons_frame, text="Aggiungi Task", command=self.add_task).pack(fill=tk.X, pady=2)
@@ -179,9 +181,20 @@ class WorkflowConfiguratorApp:
         self.clear_details_panel()
         flow_data = self.workflows.get(flow_name)
         if not flow_data: return
+
         self.flow_name_entry.insert(0, flow_name)
-        for task in flow_data.get("tasks", []):
-            self.tasks_listbox.insert(tk.END, task)
+
+        self.current_tasks = flow_data.get("tasks", [])
+        for task in self.current_tasks:
+            # Assicura che i vecchi task (stringhe) siano convertiti nel nuovo formato
+            if isinstance(task, str):
+                task_name = os.path.basename(task)
+                task_path = task
+                self.current_tasks[self.current_tasks.index(task)] = {'name': task_name, 'path': task_path}
+                self.tasks_listbox.insert(tk.END, task_name)
+            else:
+                self.tasks_listbox.insert(tk.END, task.get('name', 'Task Senza Nome'))
+
         hour, minute = map(int, flow_data.get("schedule_time", "00:00").split(':'))
         self.hour_spinbox.set(f"{hour:02}")
         self.minute_spinbox.set(f"{minute:02}")
@@ -193,8 +206,10 @@ class WorkflowConfiguratorApp:
         if flow_name not in self.workflows: return
         new_flow_name = self.flow_name_entry.get().strip()
         if not new_flow_name: return
+
+        # Salva la lista di dizionari, non solo i nomi
         current_data = {
-            "tasks": list(self.tasks_listbox.get(0, tk.END)),
+            "tasks": self.current_tasks,
             "schedule_time": f"{int(self.hour_spinbox.get()):02}:{int(self.minute_spinbox.get()):02}",
             "schedule_days": [i for i, var in enumerate(self.day_vars) if var.get()]
         }
@@ -208,6 +223,7 @@ class WorkflowConfiguratorApp:
     def clear_details_panel(self):
         self.flow_name_entry.delete(0, tk.END)
         self.tasks_listbox.delete(0, tk.END)
+        self.current_tasks = []
         self.hour_spinbox.set("00")
         self.minute_spinbox.set("00")
         for var in self.day_vars: var.set(False)
@@ -237,7 +253,7 @@ class WorkflowConfiguratorApp:
             return
 
         flow_name = self.selected_workflow_name
-        tasks = list(self.tasks_listbox.get(0, tk.END))
+        tasks = self.current_tasks
 
         if not tasks:
             messagebox.showinfo("Informazione", f"Il flusso '{flow_name}' non ha task da eseguire.")
@@ -269,8 +285,14 @@ class WorkflowConfiguratorApp:
 
         try:
             task_path = _parse_task_path_from_xml(filepath)
-            self.tasks_listbox.insert(tk.END, task_path)
-            messagebox.showinfo("Successo", f"Task '{os.path.basename(task_path)}' importato e aggiunto al flusso '{self.selected_workflow_name}'.")
+            # Usa il nome del file (senza estensione) come nome del task
+            task_name = os.path.splitext(os.path.basename(filepath))[0]
+
+            new_task = {'name': task_name, 'path': task_path}
+            self.current_tasks.append(new_task)
+            self.tasks_listbox.insert(tk.END, new_task['name'])
+
+            messagebox.showinfo("Successo", f"Task '{task_name}' importato e aggiunto al flusso.")
 
         except (ET.ParseError, ValueError) as e:
             messagebox.showerror("Errore di Importazione", f"Impossibile importare il task:\n{e}")
@@ -290,36 +312,105 @@ class WorkflowConfiguratorApp:
         )
         for filepath in filepaths:
             try:
-                rel_path = os.path.relpath(filepath)
-                self.tasks_listbox.insert(tk.END, rel_path)
+                task_path = os.path.relpath(filepath)
             except ValueError:
-                self.tasks_listbox.insert(tk.END, filepath)
+                task_path = filepath
+
+            task_name = os.path.splitext(os.path.basename(task_path))[0]
+            new_task = {'name': task_name, 'path': task_path}
+            self.current_tasks.append(new_task)
+            self.tasks_listbox.insert(tk.END, new_task['name'])
 
     def remove_task(self):
         selected_indices = self.tasks_listbox.curselection()
         if not selected_indices: return
         for i in sorted(selected_indices, reverse=True):
             self.tasks_listbox.delete(i)
+            self.current_tasks.pop(i)
 
     def move_task_up(self):
         selected_indices = self.tasks_listbox.curselection()
         if not selected_indices: return
         for i in selected_indices:
             if i > 0:
-                text = self.tasks_listbox.get(i)
+                # Muovi sia nella listbox che nella lista di dati
+                task_name = self.tasks_listbox.get(i)
                 self.tasks_listbox.delete(i)
-                self.tasks_listbox.insert(i - 1, text)
+                self.tasks_listbox.insert(i - 1, task_name)
                 self.tasks_listbox.selection_set(i - 1)
+
+                task_data = self.current_tasks.pop(i)
+                self.current_tasks.insert(i - 1, task_data)
 
     def move_task_down(self):
         selected_indices = self.tasks_listbox.curselection()
         if not selected_indices: return
         for i in sorted(selected_indices, reverse=True):
             if i < self.tasks_listbox.size() - 1:
-                text = self.tasks_listbox.get(i)
+                # Muovi sia nella listbox che nella lista di dati
+                task_name = self.tasks_listbox.get(i)
                 self.tasks_listbox.delete(i)
-                self.tasks_listbox.insert(i + 1, text)
+                self.tasks_listbox.insert(i + 1, task_name)
                 self.tasks_listbox.selection_set(i + 1)
+
+                task_data = self.current_tasks.pop(i)
+                self.current_tasks.insert(i + 1, task_data)
+
+    def edit_selected_task(self, event=None):
+        selected_indices = self.tasks_listbox.curselection()
+        if not selected_indices:
+            return
+
+        index = selected_indices[0]
+        task_data = self.current_tasks[index]
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Modifica Task")
+        dialog.geometry("600x150")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Campo Nome
+        ttk.Label(dialog, text="Nome del Task:").pack(padx=10, pady=(10, 0))
+        name_var = tk.StringVar(value=task_data['name'])
+        name_entry = ttk.Entry(dialog, textvariable=name_var)
+        name_entry.pack(padx=10, pady=2, fill=tk.X, expand=True)
+        name_entry.focus_set()
+        name_entry.selection_range(0, tk.END)
+
+        # Campo Percorso
+        ttk.Label(dialog, text="Percorso dello Script:").pack(padx=10, pady=(5, 0))
+        path_var = tk.StringVar(value=task_data['path'])
+        path_entry = ttk.Entry(dialog, textvariable=path_var)
+        path_entry.pack(padx=10, pady=2, fill=tk.X, expand=True)
+
+        def on_ok():
+            new_name = name_var.get().strip()
+            new_path = path_var.get().strip()
+
+            if not new_name or not new_path:
+                messagebox.showwarning("Dati non validi", "Nome e percorso non possono essere vuoti.", parent=dialog)
+                return
+
+            # Aggiorna sia i dati interni che la listbox
+            self.current_tasks[index] = {'name': new_name, 'path': new_path}
+            self.tasks_listbox.delete(index)
+            self.tasks_listbox.insert(index, new_name)
+            self.tasks_listbox.selection_set(index)
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Annulla", command=on_cancel).pack(side=tk.LEFT, padx=5)
+
+        dialog.bind("<Return>", lambda e: on_ok())
+        dialog.bind("<Escape>", lambda e: on_cancel())
+
+        self.root.wait_window(dialog)
 
     def display_log_record(self, record):
         """Aggiunge un record di log al widget di testo."""
