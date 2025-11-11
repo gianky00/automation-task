@@ -140,9 +140,28 @@ class WorkflowConfiguratorApp:
         self.flow_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         tasks_frame = ttk.LabelFrame(details_frame, text="Task Sequenziali (doppio click per modificare)")
         tasks_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        self.tasks_listbox = tk.Listbox(tasks_frame, selectmode=tk.EXTENDED, font=("Consolas", 10))
-        self.tasks_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.tasks_listbox.bind("<Double-1>", self.edit_selected_task)
+
+        # Creazione della TreeView
+        self.tasks_tree = ttk.TreeView(
+            tasks_frame,
+            columns=("name", "min", "max"),
+            show="headings",
+            selectmode="extended"
+        )
+        self.tasks_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Definizione delle colonne
+        self.tasks_tree.heading("name", text="Nome Task")
+        self.tasks_tree.heading("min", text="Tempo Min", anchor=tk.E)
+        self.tasks_tree.heading("max", text="Tempo Max", anchor=tk.E)
+
+        # Impostazione della larghezza e dello stretching delle colonne
+        self.tasks_tree.column("name", width=350, stretch=tk.YES)
+        self.tasks_tree.column("min", width=100, stretch=tk.NO, anchor=tk.E)
+        self.tasks_tree.column("max", width=100, stretch=tk.NO, anchor=tk.E)
+
+        self.tasks_tree.bind("<Double-1>", self.edit_selected_task)
+
         task_buttons_frame = ttk.Frame(tasks_frame)
         task_buttons_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
         ttk.Button(task_buttons_frame, text="Aggiungi Task", command=self.add_task).pack(fill=tk.X, pady=2)
@@ -243,46 +262,32 @@ class WorkflowConfiguratorApp:
         # Ripianifica il prossimo controllo
         self.root.after(3000, self.refresh_task_list_if_needed)
 
-    def _format_task_for_display(self, task_name, stats):
-        """Formatta il nome del task e le statistiche in una stringa allineata."""
-        # Lunghezza massima per il nome del task prima che appaiano le statistiche
-        MAX_NAME_LEN = 40
-
-        # Tronca il nome se è troppo lungo
-        if len(task_name) > MAX_NAME_LEN:
-            display_name = task_name[:MAX_NAME_LEN-3] + "..."
-        else:
-            display_name = task_name
-
-        # Aggiungi padding per l'allineamento
-        padded_name = display_name.ljust(MAX_NAME_LEN)
-
-        if stats:
-            min_t = f"{stats.get('min', 0):.2f}s".rjust(8) # Allinea a destra su 8 caratteri
-            max_t = f"{stats.get('max', 0):.2f}s".rjust(8) # Allinea a destra su 8 caratteri
-            return f"{padded_name} | Min: {min_t} | Max: {max_t}"
-        else:
-            return padded_name
-
     def _redraw_tasks_list(self):
-        """Ridisegna solo la lista dei task, ricaricando le statistiche."""
+        """Ridisegna la TreeView dei task, ricaricando le statistiche."""
         self.task_stats = self.load_task_stats()
 
-        current_selection = self.tasks_listbox.curselection()
+        # Mantieni la selezione corrente
+        selected_iids = self.tasks_tree.selection()
 
-        self.tasks_listbox.delete(0, tk.END)
+        # Pulisci la TreeView
+        for i in self.tasks_tree.get_children():
+            self.tasks_tree.delete(i)
 
-        for task in self.current_tasks:
+        # Riempi con i dati aggiornati
+        for i, task in enumerate(self.current_tasks):
             task_path = task.get('path', '')
             task_name = task.get('name', 'Task Senza Nome')
             stats = self.task_stats.get(task_path)
 
-            display_text = self._format_task_for_display(task_name, stats)
-            self.tasks_listbox.insert(tk.END, display_text)
+            min_t_str = f"{stats['min']:.2f}s" if stats and 'min' in stats else "N/D"
+            max_t_str = f"{stats['max']:.2f}s" if stats and 'max' in stats else "N/D"
 
-        if current_selection:
-            for i in current_selection:
-                self.tasks_listbox.selection_set(i)
+            # L'item ID (iid) può essere l'indice per un facile riferimento
+            self.tasks_tree.insert("", tk.END, iid=i, values=(task_name, min_t_str, max_t_str))
+
+        # Ripristina la selezione
+        if selected_iids:
+            self.tasks_tree.selection_set(selected_iids)
 
     def populate_workflow_details(self, flow_name):
         self.clear_details_panel()
@@ -321,7 +326,8 @@ class WorkflowConfiguratorApp:
 
     def clear_details_panel(self):
         self.flow_name_entry.delete(0, tk.END)
-        self.tasks_listbox.delete(0, tk.END)
+        for i in self.tasks_tree.get_children():
+            self.tasks_tree.delete(i)
         self.current_tasks = []
         self.hour_spinbox.set("00")
         self.minute_spinbox.set("00")
@@ -389,7 +395,7 @@ class WorkflowConfiguratorApp:
 
             new_task = {'name': task_name, 'path': task_path}
             self.current_tasks.append(new_task)
-            self.tasks_listbox.insert(tk.END, new_task['name'])
+            self._redraw_tasks_list() # Aggiorna la TreeView
 
             messagebox.showinfo("Successo", f"Task '{task_name}' importato e aggiunto al flusso.")
 
@@ -419,7 +425,6 @@ class WorkflowConfiguratorApp:
 
                     new_task = {'name': task_name, 'path': task_path}
                     self.current_tasks.append(new_task)
-                    self.tasks_listbox.insert(tk.END, new_task['name'])
                     success_count += 1
                 except (ET.ParseError, ValueError) as e:
                     # Aggiungi il file e il motivo specifico alla lista degli ignorati
@@ -430,6 +435,9 @@ class WorkflowConfiguratorApp:
                 # Registra anche i file che non sono XML
                 if os.path.isfile(filepath): # Assicurati che sia un file
                     ignored_files.append({'file': filename, 'reason': 'File non XML'})
+
+        if success_count > 0:
+            self._redraw_tasks_list()
 
         self.show_import_report(success_count, ignored_files)
 
@@ -486,49 +494,53 @@ class WorkflowConfiguratorApp:
             task_name = os.path.splitext(os.path.basename(task_path))[0]
             new_task = {'name': task_name, 'path': task_path}
             self.current_tasks.append(new_task)
-            self.tasks_listbox.insert(tk.END, new_task['name'])
+        self._redraw_tasks_list()
 
     def remove_task(self):
-        selected_indices = self.tasks_listbox.curselection()
-        if not selected_indices: return
-        for i in sorted(selected_indices, reverse=True):
-            self.tasks_listbox.delete(i)
-            self.current_tasks.pop(i)
+        selected_iids = self.tasks_tree.selection()
+        if not selected_iids: return
+
+        # Gli iid sono gli indici, quindi possiamo ordinarli
+        selected_indices = sorted([int(iid) for iid in selected_iids], reverse=True)
+
+        for index in selected_indices:
+            self.current_tasks.pop(index)
+
+        self._redraw_tasks_list()
 
     def move_task_up(self):
-        selected_indices = self.tasks_listbox.curselection()
-        if not selected_indices: return
-        for i in selected_indices:
-            if i > 0:
-                # Muovi sia nella listbox che nella lista di dati
-                task_name = self.tasks_listbox.get(i)
-                self.tasks_listbox.delete(i)
-                self.tasks_listbox.insert(i - 1, task_name)
-                self.tasks_listbox.selection_set(i - 1)
+        selected_iids = self.tasks_tree.selection()
+        if not selected_iids: return
 
-                task_data = self.current_tasks.pop(i)
-                self.current_tasks.insert(i - 1, task_data)
+        # Muovi un solo elemento alla volta per semplicità
+        iid = selected_iids[0]
+        index = int(iid)
+
+        if index > 0:
+            self.current_tasks.insert(index - 1, self.current_tasks.pop(index))
+            self._redraw_tasks_list()
+            # Seleziona l'elemento spostato
+            self.tasks_tree.selection_set(str(index - 1))
 
     def move_task_down(self):
-        selected_indices = self.tasks_listbox.curselection()
-        if not selected_indices: return
-        for i in sorted(selected_indices, reverse=True):
-            if i < self.tasks_listbox.size() - 1:
-                # Muovi sia nella listbox che nella lista di dati
-                task_name = self.tasks_listbox.get(i)
-                self.tasks_listbox.delete(i)
-                self.tasks_listbox.insert(i + 1, task_name)
-                self.tasks_listbox.selection_set(i + 1)
+        selected_iids = self.tasks_tree.selection()
+        if not selected_iids: return
 
-                task_data = self.current_tasks.pop(i)
-                self.current_tasks.insert(i + 1, task_data)
+        iid = selected_iids[0]
+        index = int(iid)
+
+        if index < len(self.current_tasks) - 1:
+            self.current_tasks.insert(index + 1, self.current_tasks.pop(index))
+            self._redraw_tasks_list()
+            self.tasks_tree.selection_set(str(index + 1))
 
     def edit_selected_task(self, event=None):
-        selected_indices = self.tasks_listbox.curselection()
-        if not selected_indices:
+        selected_iids = self.tasks_tree.selection()
+        if not selected_iids:
             return
 
-        index = selected_indices[0]
+        iid = selected_iids[0]
+        index = int(iid)
         task_data = self.current_tasks[index]
 
         dialog = tk.Toplevel(self.root)
@@ -559,11 +571,10 @@ class WorkflowConfiguratorApp:
                 messagebox.showwarning("Dati non validi", "Nome e percorso non possono essere vuoti.", parent=dialog)
                 return
 
-            # Aggiorna sia i dati interni che la listbox
+            # Aggiorna i dati interni e ridisegna la TreeView
             self.current_tasks[index] = {'name': new_name, 'path': new_path}
-            self.tasks_listbox.delete(index)
-            self.tasks_listbox.insert(index, new_name)
-            self.tasks_listbox.selection_set(index)
+            self._redraw_tasks_list()
+            self.tasks_tree.selection_set(str(index)) # Ripristina la selezione
             dialog.destroy()
 
         def on_cancel():
