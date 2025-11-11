@@ -124,6 +124,7 @@ class WorkflowConfiguratorApp:
         task_buttons_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
         ttk.Button(task_buttons_frame, text="Aggiungi Task", command=self.add_task).pack(fill=tk.X, pady=2)
         ttk.Button(task_buttons_frame, text="Importa Task da XML...", command=self.import_task_from_xml).pack(fill=tk.X, pady=2)
+        ttk.Button(task_buttons_frame, text="Importa da Cartella...", command=self.import_tasks_from_folder).pack(fill=tk.X, pady=2)
         ttk.Button(task_buttons_frame, text="Rimuovi Task", command=self.remove_task).pack(fill=tk.X, pady=2)
         ttk.Separator(task_buttons_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
         ttk.Button(task_buttons_frame, text="Sposta Su", command=self.move_task_up).pack(fill=tk.X, pady=2)
@@ -298,6 +299,39 @@ class WorkflowConfiguratorApp:
             messagebox.showerror("Errore di Importazione", f"Impossibile importare il task:\n{e}")
         except Exception as e:
             messagebox.showerror("Errore Inatteso", f"Si è verificato un errore: {e}")
+
+    def import_tasks_from_folder(self):
+        if not self.selected_workflow_name:
+            messagebox.showwarning("Azione non permessa", "Seleziona prima un flusso di lavoro a cui aggiungere i task.")
+            return
+
+        folder_path = filedialog.askdirectory(title="Seleziona una cartella contenente file XML")
+        if not folder_path:
+            return
+
+        success_count = 0
+        fail_count = 0
+
+        for filename in os.listdir(folder_path):
+            if filename.lower().endswith(".xml"):
+                filepath = os.path.join(folder_path, filename)
+                try:
+                    task_path = _parse_task_path_from_xml(filepath)
+                    task_name = os.path.splitext(filename)[0]
+
+                    new_task = {'name': task_name, 'path': task_path}
+                    self.current_tasks.append(new_task)
+                    self.tasks_listbox.insert(tk.END, new_task['name'])
+                    success_count += 1
+                except (ET.ParseError, ValueError):
+                    fail_count += 1 # Ignora i file XML non validi o non conformi
+
+        messagebox.showinfo(
+            "Importazione Completata",
+            f"Importazione dalla cartella completata.\n\n"
+            f"Task aggiunti con successo: {success_count}\n"
+            f"File ignorati o non validi: {fail_count}"
+        )
 
     def add_task(self):
         filepaths = filedialog.askopenfilenames(
