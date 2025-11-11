@@ -117,13 +117,14 @@ class WorkflowConfiguratorApp:
         self.flow_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         tasks_frame = ttk.LabelFrame(details_frame, text="Task Sequenziali (doppio click per modificare)")
         tasks_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        self.tasks_listbox = tk.Listbox(tasks_frame)
+        self.tasks_listbox = tk.Listbox(tasks_frame, selectmode=tk.EXTENDED)
         self.tasks_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.tasks_listbox.bind("<Double-1>", self.edit_selected_task)
         task_buttons_frame = ttk.Frame(tasks_frame)
         task_buttons_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
         ttk.Button(task_buttons_frame, text="Aggiungi Task", command=self.add_task).pack(fill=tk.X, pady=2)
         ttk.Button(task_buttons_frame, text="Importa Task da XML...", command=self.import_task_from_xml).pack(fill=tk.X, pady=2)
+        ttk.Button(task_buttons_frame, text="Importa da Cartella...", command=self.import_tasks_from_folder).pack(fill=tk.X, pady=2)
         ttk.Button(task_buttons_frame, text="Rimuovi Task", command=self.remove_task).pack(fill=tk.X, pady=2)
         ttk.Separator(task_buttons_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
         ttk.Button(task_buttons_frame, text="Sposta Su", command=self.move_task_up).pack(fill=tk.X, pady=2)
@@ -298,6 +299,74 @@ class WorkflowConfiguratorApp:
             messagebox.showerror("Errore di Importazione", f"Impossibile importare il task:\n{e}")
         except Exception as e:
             messagebox.showerror("Errore Inatteso", f"Si è verificato un errore: {e}")
+
+    def import_tasks_from_folder(self):
+        if not self.selected_workflow_name:
+            messagebox.showwarning("Azione non permessa", "Seleziona prima un flusso di lavoro a cui aggiungere i task.")
+            return
+
+        folder_path = filedialog.askdirectory(title="Seleziona una cartella contenente file XML")
+        if not folder_path:
+            return
+
+        success_count = 0
+        ignored_files = [] # Lista per memorizzare i file ignorati e il motivo
+
+        for filename in os.listdir(folder_path):
+            filepath = os.path.join(folder_path, filename)
+            if filename.lower().endswith(".xml"):
+                try:
+                    task_path = _parse_task_path_from_xml(filepath)
+                    task_name = os.path.splitext(filename)[0]
+
+                    new_task = {'name': task_name, 'path': task_path}
+                    self.current_tasks.append(new_task)
+                    self.tasks_listbox.insert(tk.END, new_task['name'])
+                    success_count += 1
+                except (ET.ParseError, ValueError) as e:
+                    # Aggiungi il file e il motivo specifico alla lista degli ignorati
+                    ignored_files.append({'file': filename, 'reason': str(e)})
+                except Exception as e:
+                    ignored_files.append({'file': filename, 'reason': f"Errore inatteso: {e}"})
+            else:
+                # Registra anche i file che non sono XML
+                if os.path.isfile(filepath): # Assicurati che sia un file
+                    ignored_files.append({'file': filename, 'reason': 'File non XML'})
+
+        self.show_import_report(success_count, ignored_files)
+
+
+    def show_import_report(self, success_count, ignored_files):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Report di Importazione")
+        dialog.geometry("600x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        summary_frame = ttk.Frame(dialog, padding="10")
+        summary_frame.pack(fill=tk.X)
+
+        ttk.Label(summary_frame, text=f"Task aggiunti con successo: {success_count}", font=("Arial", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(summary_frame, text=f"File ignorati o non validi: {len(ignored_files)}", font=("Arial", 10, "bold")).pack(anchor=tk.W)
+
+        if ignored_files:
+            details_frame = ttk.LabelFrame(dialog, text="Dettagli File Ignorati", padding="10")
+            details_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+            report_text = scrolledtext.ScrolledText(details_frame, wrap=tk.WORD, height=15)
+            report_text.pack(fill=tk.BOTH, expand=True)
+
+            # Popola il report
+            for item in ignored_files:
+                report_text.insert(tk.END, f"File: {item['file']}\nMotivo: {item['reason']}\n\n")
+
+            report_text.configure(state='disabled') # Rendi il testo non modificabile
+
+        ok_button = ttk.Button(dialog, text="OK", command=dialog.destroy)
+        ok_button.pack(pady=10)
+
+        dialog.bind("<Return>", lambda e: dialog.destroy())
+        dialog.bind("<Escape>", lambda e: dialog.destroy())
 
     def add_task(self):
         filepaths = filedialog.askopenfilenames(
