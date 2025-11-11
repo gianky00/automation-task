@@ -25,24 +25,34 @@ class QueueHandler(logging.Handler):
 
 def _parse_task_path_from_xml(filepath):
     """
-    Estrae il percorso di uno script Python da un file XML
-    dell'Utilità di Pianificazione di Windows.
-    Solleva eccezioni in caso di errori.
+    Estrae il percorso di uno script (py, bat, ps1) da un file XML
+    dell'Utilità di Pianificazione di Windows. Cerca prima in <Arguments>
+    e poi in <Command> come fallback. Solleva eccezioni in caso di errori.
     """
     namespaces = {'win': 'http://schemas.microsoft.com/windows/2004/02/mit/task'}
     tree = ET.parse(filepath)
     root = tree.getroot()
 
-    arguments_node = root.find('win:Actions/win:Exec/win:Arguments', namespaces)
-    if arguments_node is None or not arguments_node.text:
-        raise ValueError("Impossibile trovare il nodo <Arguments> nell'XML.")
+    exec_node = root.find('win:Actions/win:Exec', namespaces)
+    if exec_node is None:
+        raise ValueError("Nodo <Exec> non trovato nel file XML.")
 
-    # Espressione regolare generalizzata per .py, .bat, .ps1
-    match = re.search(r'["\'](.*?\.(?:py|bat|ps1))["\']', arguments_node.text, re.IGNORECASE)
-    if not match:
-        raise ValueError("Nessun file supportato (.py, .bat, .ps1) trovato negli argomenti.")
+    arguments_node = exec_node.find('win:Arguments', namespaces)
+    command_node = exec_node.find('win:Command', namespaces)
 
-    return match.group(1)
+    # Tenta di trovare il percorso prima negli argomenti
+    if arguments_node is not None and arguments_node.text:
+        match = re.search(r'["\'](.*?\.(?:py|bat|ps1))["\']', arguments_node.text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+
+    # Se non trovato, tenta nel comando (fallback)
+    if command_node is not None and command_node.text:
+        match = re.search(r'["\']?(.*?\.(?:py|bat|ps1))["\']?', command_node.text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+
+    raise ValueError("Nessun percorso di script supportato (.py, .bat, .ps1) trovato in <Arguments> o <Command>.")
 
 
 class WorkflowConfiguratorApp:
