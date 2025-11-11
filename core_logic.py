@@ -2,9 +2,50 @@ import logging
 import os
 import subprocess
 import time
+import json
+import threading
 
 LOG_DIR = "logs"
+CONFIG_DIR = "config"
 LOG_FILE = os.path.join(LOG_DIR, "scheduler.log")
+STATS_FILE = os.path.join(CONFIG_DIR, "task_stats.json")
+
+# Lock per garantire l'accesso thread-safe al file delle statistiche
+_stats_lock = threading.Lock()
+
+def _load_task_stats():
+    """Carica le statistiche dei task da un file JSON in modo thread-safe."""
+    with _stats_lock:
+        try:
+            with open(STATS_FILE, 'r') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+def _save_task_stats(stats):
+    """Salva le statistiche dei task su un file JSON in modo thread-safe."""
+    with _stats_lock:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(STATS_FILE, 'w') as f:
+            json.dump(stats, f, indent=4)
+
+def update_task_stats(task_path, duration):
+    """Aggiorna le statistiche min/max per un dato task."""
+    stats = _load_task_stats()
+    task_stats = stats.get(task_path, {})
+
+    current_min = task_stats.get('min')
+    current_max = task_stats.get('max')
+
+    if current_min is None or duration < current_min:
+        task_stats['min'] = duration
+
+    if current_max is None or duration > current_max:
+        task_stats['max'] = duration
+
+    stats[task_path] = task_stats
+    _save_task_stats(stats)
+
 
 def setup_logging():
     """Configura il sistema di logging per scrivere su file e console."""
@@ -70,6 +111,7 @@ def execute_flow(flow_name, tasks):
 
             if result.returncode == 0:
                 logging.info(f"[{flow_name}] Task '{task_name}' completato con successo in {duration:.2f} secondi.")
+                update_task_stats(task_path, duration) # Aggiorna le statistiche
                 if i < len(tasks) - 1:
                     next_task_name = tasks[i+1].get('name', 'Task Senza Nome')
                     logging.info(f"[{flow_name}] Prossimo task: '{next_task_name}'")

@@ -7,10 +7,13 @@ import re
 import threading
 import queue
 import logging
+from datetime import datetime, timedelta
 from core_logic import setup_logging, execute_flow
 
 CONFIG_DIR = "config"
 CONFIG_FILE = os.path.join(CONFIG_DIR, "workflows.json")
+STATUS_FILE = os.path.join(CONFIG_DIR, "scheduler_status.json")
+STATS_FILE = os.path.join(CONFIG_DIR, "task_stats.json")
 
 
 class QueueHandler(logging.Handler):
@@ -25,24 +28,34 @@ class QueueHandler(logging.Handler):
 
 def _parse_task_path_from_xml(filepath):
     """
-    Estrae il percorso di uno script Python da un file XML
-    dell'Utilità di Pianificazione di Windows.
-    Solleva eccezioni in caso di errori.
+    Estrae il percorso di uno script (py, bat, ps1) da un file XML
+    dell'Utilità di Pianificazione di Windows. Cerca prima in <Arguments>
+    e poi in <Command> come fallback. Solleva eccezioni in caso di errori.
     """
     namespaces = {'win': 'http://schemas.microsoft.com/windows/2004/02/mit/task'}
     tree = ET.parse(filepath)
     root = tree.getroot()
 
-    arguments_node = root.find('win:Actions/win:Exec/win:Arguments', namespaces)
-    if arguments_node is None or not arguments_node.text:
-        raise ValueError("Impossibile trovare il nodo <Arguments> nell'XML.")
+    exec_node = root.find('win:Actions/win:Exec', namespaces)
+    if exec_node is None:
+        raise ValueError("Nodo <Exec> non trovato nel file XML.")
 
-    # Espressione regolare generalizzata per .py, .bat, .ps1
-    match = re.search(r'["\'](.*?\.(?:py|bat|ps1))["\']', arguments_node.text, re.IGNORECASE)
-    if not match:
-        raise ValueError("Nessun file supportato (.py, .bat, .ps1) trovato negli argomenti.")
+    arguments_node = exec_node.find('win:Arguments', namespaces)
+    command_node = exec_node.find('win:Command', namespaces)
 
-    return match.group(1)
+    # Tenta di trovare il percorso prima negli argomenti
+    if arguments_node is not None and arguments_node.text:
+        match = re.search(r'["\'](.*?\.(?:py|bat|ps1))["\']', arguments_node.text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+
+    # Se non trovato, tenta nel comando (fallback)
+    if command_node is not None and command_node.text:
+        match = re.search(r'["\']?(.*?\.(?:py|bat|ps1))["\']?', command_node.text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+
+    raise ValueError("Nessun percorso di script supportato (.py, .bat, .ps1) trovato in <Arguments> o <Command>.")
 
 
 class WorkflowConfiguratorApp:
@@ -64,12 +77,14 @@ class WorkflowConfiguratorApp:
         self.queue_handler = QueueHandler(self.log_queue)
         logging.getLogger().addHandler(self.queue_handler)
 
+        self.task_stats = self.load_task_stats()
         self.load_workflows()
         self.create_widgets()
         self.populate_workflows_list()
 
-        # Avvia il polling della coda dei log
+        # Avvia il polling
         self.root.after(100, self.poll_log_queue)
+        self.root.after(100, self.update_status_bar) # Avvia subito il primo controllo
 
     def load_workflows(self):
         try:
@@ -77,6 +92,13 @@ class WorkflowConfiguratorApp:
                 self.workflows = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             self.workflows = {}
+
+    def load_task_stats(self):
+        try:
+            with open(STATS_FILE, 'r') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
 
     def save_workflows(self):
         if self.selected_workflow_name:
@@ -164,6 +186,38 @@ class WorkflowConfiguratorApp:
         self.log_widget = scrolledtext.ScrolledText(log_frame, state='disabled', wrap=tk.WORD, height=10)
         self.log_widget.pack(fill=tk.BOTH, expand=True)
 
+        # --- Barra di Stato ---
+        self.status_bar = ttk.Label(self.root, text="Stato Scheduler: Inizializzazione...", anchor=tk.W, relief=tk.SUNKEN)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def update_status_bar(self):
+        try:
+            with open(STATUS_FILE, 'r') as f:
+                status_data = json.load(f)
+
+            # Controlla se il timestamp è recente (es. entro gli ultimi 90 secondi)
+            last_update = datetime.fromisoformat(status_data.get('timestamp'))
+            if datetime.now() - last_update > timedelta(seconds=90):
+                status_text = "Stato Scheduler: FERMATO (timeout)"
+                status_color = "red"
+            else:
+                running_flows = status_data.get('running_flows', [])
+                if running_flows:
+                    status_text = f"Stato Scheduler: IN ESECUZIONE ({len(running_flows)} flussi attivi: {', '.join(running_flows)})"
+                    status_color = "blue"
+                else:
+                    status_text = "Stato Scheduler: IN ESECUZIONE (in attesa)"
+                    status_color = "green"
+
+        except (FileNotFoundError, json.JSONDecodeError):
+            status_text = "Stato Scheduler: FERMATO"
+            status_color = "red"
+
+        self.status_bar.config(text=status_text, foreground=status_color)
+
+        # Ripianifica il controllo
+        self.root.after(5000, self.update_status_bar) # Controlla ogni 5 secondi
+
     def populate_workflows_list(self):
         self.workflows_listbox.delete(0, tk.END)
         for name in sorted(self.workflows.keys()):
@@ -186,15 +240,23 @@ class WorkflowConfiguratorApp:
         self.flow_name_entry.insert(0, flow_name)
 
         self.current_tasks = flow_data.get("tasks", [])
+        self.tasks_listbox.delete(0, tk.END) # Pulisci la lista prima di ripopolarla
+
+        # Ricarica le statistiche più recenti ogni volta che si seleziona un flusso
+        self.task_stats = self.load_task_stats()
+
         for task in self.current_tasks:
-            # Assicura che i vecchi task (stringhe) siano convertiti nel nuovo formato
-            if isinstance(task, str):
-                task_name = os.path.basename(task)
-                task_path = task
-                self.current_tasks[self.current_tasks.index(task)] = {'name': task_name, 'path': task_path}
-                self.tasks_listbox.insert(tk.END, task_name)
-            else:
-                self.tasks_listbox.insert(tk.END, task.get('name', 'Task Senza Nome'))
+            task_path = task.get('path', '')
+            task_name = task.get('name', 'Task Senza Nome')
+
+            stats = self.task_stats.get(task_path)
+            display_text = task_name
+            if stats:
+                min_t = f"{stats.get('min', 0):.2f}s"
+                max_t = f"{stats.get('max', 0):.2f}s"
+                display_text += f"  [min: {min_t}, max: {max_t}]"
+
+            self.tasks_listbox.insert(tk.END, display_text)
 
         hour, minute = map(int, flow_data.get("schedule_time", "00:00").split(':'))
         self.hour_spinbox.set(f"{hour:02}")
