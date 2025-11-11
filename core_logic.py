@@ -25,15 +25,18 @@ def setup_logging():
 
 def execute_flow(flow_name, tasks):
     """
-    Esegue una lista di task in sequenza, gestendo diversi tipi di script.
+    Esegue una lista di task (dizionari con 'name' e 'path') in sequenza.
     """
     logging.info(f"TRIGGER: Avvio flusso '{flow_name}'.")
 
-    for i, task_path in enumerate(tasks):
-        logging.info(f"[{flow_name}] Esecuzione task {i+1}/{len(tasks)}: '{task_path}'...")
+    for i, task in enumerate(tasks):
+        task_name = task.get('name', 'Task Senza Nome')
+        task_path = task.get('path', '')
 
-        if not os.path.exists(task_path):
-            logging.error(f"[{flow_name}] ERRORE: Il file del task '{task_path}' non è stato trovato. Interruzione del flusso.")
+        logging.info(f"[{flow_name}] Esecuzione task {i+1}/{len(tasks)} '{task_name}': '{task_path}'...")
+
+        if not task_path or not os.path.exists(task_path):
+            logging.error(f"[{flow_name}] ERRORE: Il file del task '{task_name}' ('{task_path}') non è stato trovato. Interruzione del flusso.")
             break
 
         try:
@@ -47,7 +50,7 @@ def execute_flow(flow_name, tasks):
             elif file_extension == '.ps1':
                 command = ["powershell", "-ExecutionPolicy", "Bypass", "-File", task_path]
             else:
-                logging.error(f"[{flow_name}] ERRORE: Tipo di file non supportato '{file_extension}'. Salto del task.")
+                logging.error(f"[{flow_name}] ERRORE: Tipo di file non supportato '{file_extension}' per il task '{task_name}'. Salto.")
                 continue
 
             start_time = time.monotonic()
@@ -63,22 +66,22 @@ def execute_flow(flow_name, tasks):
             duration = end_time - start_time
 
             if result.stdout:
-                logging.info(f"[{flow_name}] Output di '{task_path}':\n{result.stdout.strip()}")
+                logging.info(f"[{flow_name}] Output del task '{task_name}':\n{result.stdout.strip()}")
 
             if result.returncode == 0:
-                logging.info(f"[{flow_name}] Task '{task_path}' completato con successo in {duration:.2f} secondi.")
-                # Se non è l'ultimo task, annuncia il prossimo
+                logging.info(f"[{flow_name}] Task '{task_name}' completato con successo in {duration:.2f} secondi.")
                 if i < len(tasks) - 1:
-                    logging.info(f"[{flow_name}] Prossimo task: '{tasks[i+1]}'")
+                    next_task_name = tasks[i+1].get('name', 'Task Senza Nome')
+                    logging.info(f"[{flow_name}] Prossimo task: '{next_task_name}'")
             else:
-                logging.error(f"[{flow_name}] ERRORE: Task '{task_path}' terminato con codice {result.returncode} dopo {duration:.2f} secondi.")
+                logging.error(f"[{flow_name}] ERRORE: Task '{task_name}' terminato con codice {result.returncode} dopo {duration:.2f} secondi.")
                 if result.stderr:
-                    logging.error(f"[{flow_name}] Errore di '{task_path}':\n{result.stderr.strip()}")
+                    logging.error(f"[{flow_name}] Errore standard del task '{task_name}':\n{result.stderr.strip()}")
                 logging.warning(f"[{flow_name}] Flusso interrotto a causa di un errore nel task.")
                 break
 
         except Exception as e:
-            logging.critical(f"[{flow_name}] Si è verificato un errore critico durante l'esecuzione di '{task_path}': {e}")
+            logging.critical(f"[{flow_name}] Errore critico durante l'esecuzione del task '{task_name}': {e}")
             logging.warning(f"[{flow_name}] Flusso interrotto a causa di un'eccezione.")
             break
 
