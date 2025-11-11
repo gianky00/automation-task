@@ -141,8 +141,8 @@ class WorkflowConfiguratorApp:
         tasks_frame = ttk.LabelFrame(details_frame, text="Task Sequenziali (doppio click per modificare)")
         tasks_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
-        # Creazione della TreeView
-        self.tasks_tree = ttk.TreeView(
+        # Creazione della Treeview
+        self.tasks_tree = ttk.Treeview(
             tasks_frame,
             columns=("name", "min", "max"),
             show="headings",
