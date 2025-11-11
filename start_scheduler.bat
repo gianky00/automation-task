@@ -1,5 +1,7 @@
 @echo off
-REM Avvia il servizio di scheduling in una nuova finestra di console.
-REM Questo permette di monitorare i log del servizio in tempo reale
-REM senza bloccare la finestra del prompt principale.
-start "Scheduler Service" python.exe scheduler_service.py
+REM Avvia il servizio di scheduling in modo completamente silenzioso in background.
+REM 'start /b' avvia il processo senza creare una nuova finestra.
+REM 'pythonw.exe' è l'interprete Python che non apre una finestra di console.
+REM Insieme, garantiscono che il servizio giri in modo invisibile.
+
+start "Silent Scheduler Service" /b pythonw.exe scheduler_service.py
