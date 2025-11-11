@@ -77,10 +77,6 @@ class WorkflowConfiguratorApp:
         self.queue_handler = QueueHandler(self.log_queue)
         logging.getLogger().addHandler(self.queue_handler)
 
-        self.load_workflows()
-        self.create_widgets()
-        self.populate_workflows_list()
-
         self.task_stats = self.load_task_stats()
         self.load_workflows()
         self.create_widgets()
@@ -88,7 +84,7 @@ class WorkflowConfiguratorApp:
 
         # Avvia il polling
         self.root.after(100, self.poll_log_queue)
-        self.root.after(2000, self.update_status_bar) # Controlla lo stato ogni 2 secondi
+        self.root.after(100, self.update_status_bar) # Avvia subito il primo controllo
 
     def load_workflows(self):
         try:
