@@ -85,6 +85,7 @@ class WorkflowConfiguratorApp:
         # Avvia il polling
         self.root.after(100, self.poll_log_queue)
         self.root.after(100, self.update_status_bar) # Avvia subito il primo controllo
+        self.root.after(3000, self.refresh_task_list_if_needed) # Avvia il refresh dei task
 
     def load_workflows(self):
         try:
@@ -139,7 +140,7 @@ class WorkflowConfiguratorApp:
         self.flow_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         tasks_frame = ttk.LabelFrame(details_frame, text="Task Sequenziali (doppio click per modificare)")
         tasks_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        self.tasks_listbox = tk.Listbox(tasks_frame, selectmode=tk.EXTENDED)
+        self.tasks_listbox = tk.Listbox(tasks_frame, selectmode=tk.EXTENDED, font=("Consolas", 10))
         self.tasks_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.tasks_listbox.bind("<Double-1>", self.edit_selected_task)
         task_buttons_frame = ttk.Frame(tasks_frame)
@@ -232,6 +233,57 @@ class WorkflowConfiguratorApp:
         self.selected_workflow_name = self.workflows_listbox.get(selected_index)
         self.populate_workflow_details(self.selected_workflow_name)
 
+    def refresh_task_list_if_needed(self):
+        """
+        Ricarica le statistiche e aggiorna la lista dei task se un flusso
+        è attualmente selezionato, per mostrare i tempi in tempo reale.
+        """
+        if self.selected_workflow_name:
+            self._redraw_tasks_list()
+        # Ripianifica il prossimo controllo
+        self.root.after(3000, self.refresh_task_list_if_needed)
+
+    def _format_task_for_display(self, task_name, stats):
+        """Formatta il nome del task e le statistiche in una stringa allineata."""
+        # Lunghezza massima per il nome del task prima che appaiano le statistiche
+        MAX_NAME_LEN = 40
+
+        # Tronca il nome se è troppo lungo
+        if len(task_name) > MAX_NAME_LEN:
+            display_name = task_name[:MAX_NAME_LEN-3] + "..."
+        else:
+            display_name = task_name
+
+        # Aggiungi padding per l'allineamento
+        padded_name = display_name.ljust(MAX_NAME_LEN)
+
+        if stats:
+            min_t = f"{stats.get('min', 0):.2f}s".rjust(8) # Allinea a destra su 8 caratteri
+            max_t = f"{stats.get('max', 0):.2f}s".rjust(8) # Allinea a destra su 8 caratteri
+            return f"{padded_name} | Min: {min_t} | Max: {max_t}"
+        else:
+            return padded_name
+
+    def _redraw_tasks_list(self):
+        """Ridisegna solo la lista dei task, ricaricando le statistiche."""
+        self.task_stats = self.load_task_stats()
+
+        current_selection = self.tasks_listbox.curselection()
+
+        self.tasks_listbox.delete(0, tk.END)
+
+        for task in self.current_tasks:
+            task_path = task.get('path', '')
+            task_name = task.get('name', 'Task Senza Nome')
+            stats = self.task_stats.get(task_path)
+
+            display_text = self._format_task_for_display(task_name, stats)
+            self.tasks_listbox.insert(tk.END, display_text)
+
+        if current_selection:
+            for i in current_selection:
+                self.tasks_listbox.selection_set(i)
+
     def populate_workflow_details(self, flow_name):
         self.clear_details_panel()
         flow_data = self.workflows.get(flow_name)
@@ -240,23 +292,7 @@ class WorkflowConfiguratorApp:
         self.flow_name_entry.insert(0, flow_name)
 
         self.current_tasks = flow_data.get("tasks", [])
-        self.tasks_listbox.delete(0, tk.END) # Pulisci la lista prima di ripopolarla
-
-        # Ricarica le statistiche più recenti ogni volta che si seleziona un flusso
-        self.task_stats = self.load_task_stats()
-
-        for task in self.current_tasks:
-            task_path = task.get('path', '')
-            task_name = task.get('name', 'Task Senza Nome')
-
-            stats = self.task_stats.get(task_path)
-            display_text = task_name
-            if stats:
-                min_t = f"{stats.get('min', 0):.2f}s"
-                max_t = f"{stats.get('max', 0):.2f}s"
-                display_text += f"  [min: {min_t}, max: {max_t}]"
-
-            self.tasks_listbox.insert(tk.END, display_text)
+        self._redraw_tasks_list()
 
         hour, minute = map(int, flow_data.get("schedule_time", "00:00").split(':'))
         self.hour_spinbox.set(f"{hour:02}")

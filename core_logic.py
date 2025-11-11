@@ -95,30 +95,26 @@ def execute_flow(flow_name, tasks):
                 continue
 
             start_time = time.monotonic()
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                check=False,
-                encoding='utf-8',
-                errors='replace'
-            )
+
+            # Modifica per l'interazione con il desktop: usa Popen senza catturare l'output
+            # per permettere a script come quelli win32com di funzionare.
+            # CREATE_NO_WINDOW è per Windows, per evitare che appaiano console.
+            process = subprocess.Popen(command, creationflags=subprocess.CREATE_NO_WINDOW)
+            process.wait()  # Attendi la fine del processo
+            return_code = process.returncode
+
             end_time = time.monotonic()
             duration = end_time - start_time
 
-            if result.stdout:
-                logging.info(f"[{flow_name}] Output del task '{task_name}':\n{result.stdout.strip()}")
-
-            if result.returncode == 0:
+            if return_code == 0:
                 logging.info(f"[{flow_name}] Task '{task_name}' completato con successo in {duration:.2f} secondi.")
-                update_task_stats(task_path, duration) # Aggiorna le statistiche
+                update_task_stats(task_path, duration)
                 if i < len(tasks) - 1:
                     next_task_name = tasks[i+1].get('name', 'Task Senza Nome')
                     logging.info(f"[{flow_name}] Prossimo task: '{next_task_name}'")
             else:
-                logging.error(f"[{flow_name}] ERRORE: Task '{task_name}' terminato con codice {result.returncode} dopo {duration:.2f} secondi.")
-                if result.stderr:
-                    logging.error(f"[{flow_name}] Errore standard del task '{task_name}':\n{result.stderr.strip()}")
+                logging.error(f"[{flow_name}] ERRORE: Task '{task_name}' terminato con codice {return_code} dopo {duration:.2f} secondi.")
+                logging.warning(f"[{flow_name}] L'output del task potrebbe contenere dettagli sull'errore, ma non può essere catturato direttamente in questa modalità. Controllare i log specifici del task, se disponibili.")
                 logging.warning(f"[{flow_name}] Flusso interrotto a causa di un errore nel task.")
                 break
 
