@@ -29,33 +29,46 @@ class QueueHandler(logging.Handler):
 def _parse_task_path_from_xml(filepath):
     """
     Estrae il percorso di uno script (py, bat, ps1) da un file XML
-    dell'Utilità di Pianificazione di Windows. Cerca prima in <Arguments>
-    e poi in <Command> come fallback. Solleva eccezioni in caso di errori.
+    dell'Utilità di Pianificazione di Windows in modo robusto, ignorando i namespace
+    e controllando l'esistenza dei nodi.
     """
-    namespaces = {'win': 'http://schemas.microsoft.com/windows/2004/02/mit/task'}
-    tree = ET.parse(filepath)
-    root = tree.getroot()
+    try:
+        # Rimuovi i namespace per un parsing più robusto
+        it = ET.iterparse(filepath)
+        for _, el in it:
+            if '}' in el.tag:
+                el.tag = el.tag.split('}', 1)[1]  # Rimuovi il namespace
+        root = it.root
 
-    exec_node = root.find('win:Actions/win:Exec', namespaces)
-    if exec_node is None:
-        raise ValueError("Nodo <Exec> non trovato nel file XML.")
+        actions_node = root.find('Actions')
+        if actions_node is None:
+            raise ValueError("Nodo <Actions> non trovato nel file XML.")
 
-    arguments_node = exec_node.find('win:Arguments', namespaces)
-    command_node = exec_node.find('win:Command', namespaces)
+        exec_node = actions_node.find('Exec')
+        if exec_node is None:
+            # Potrebbe esserci un'altra azione, la ignoriamo e segnaliamo che non c'è Exec
+            raise ValueError("Nodo <Exec> non trovato all'interno di <Actions>.")
 
-    # Tenta di trovare il percorso prima negli argomenti
-    if arguments_node is not None and arguments_node.text:
-        match = re.search(r'["\'](.*?\.(?:py|bat|ps1))["\']', arguments_node.text, re.IGNORECASE)
-        if match:
-            return match.group(1)
+        arguments_node = exec_node.find('Arguments')
+        command_node = exec_node.find('Command')
 
-    # Se non trovato, tenta nel comando (fallback)
-    if command_node is not None and command_node.text:
-        match = re.search(r'["\']?(.*?\.(?:py|bat|ps1))["\']?', command_node.text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
+        # Tenta di trovare il percorso prima negli argomenti
+        if arguments_node is not None and arguments_node.text:
+            # Pattern per percorsi tra virgolette o senza
+            match = re.search(r'["\']?([a-zA-Z]:\\[^"\']*\.(?:py|bat|ps1))["\']?', arguments_node.text, re.IGNORECASE)
+            if match:
+                return match.group(1)
 
-    raise ValueError("Nessun percorso di script supportato (.py, .bat, .ps1) trovato in <Arguments> o <Command>.")
+        # Se non trovato, tenta nel comando (fallback)
+        if command_node is not None and command_node.text:
+            match = re.search(r'["\']?([a-zA-Z]:\\[^"\']*\.(?:py|bat|ps1))["\']?', command_node.text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+
+        raise ValueError("Nessun percorso di script supportato (.py, .bat, .ps1) trovato in <Arguments> o <Command>.")
+
+    except ET.ParseError as e:
+        raise ValueError(f"Errore di parsing XML: {e}")
 
 
 def format_duration(seconds):
@@ -352,8 +365,13 @@ class WorkflowConfiguratorApp:
             task_name = task.get('name', 'Task Senza Nome')
             stats = self.task_stats.get(task_path)
 
-            min_t_str = format_duration(stats.get('min'))
-            max_t_str = format_duration(stats.get('max'))
+            min_t, max_t = (None, None)
+            if stats:
+                min_t = stats.get('min')
+                max_t = stats.get('max')
+
+            min_t_str = format_duration(min_t)
+            max_t_str = format_duration(max_t)
 
             # L'item ID (iid) può essere l'indice per un facile riferimento
             self.tasks_tree.insert("", tk.END, iid=i, values=(task_name, min_t_str, max_t_str))
