@@ -77,8 +77,8 @@ def execute_flow(flow_name, tasks):
         logging.info(f"[{flow_name}] Esecuzione task {i+1}/{len(tasks)} '{task_name}': '{task_path}'...")
 
         if not task_path or not os.path.exists(task_path):
-            logging.error(f"[{flow_name}] ERRORE: Il file del task '{task_name}' ('{task_path}') non è stato trovato. Interruzione del flusso.")
-            break
+            logging.error(f"[{flow_name}] ERRORE: Il file del task '{task_name}' ('{task_path}') non è stato trovato. Task saltato.")
+            continue
 
         try:
             command = []
@@ -115,12 +115,10 @@ def execute_flow(flow_name, tasks):
             else:
                 logging.error(f"[{flow_name}] ERRORE: Task '{task_name}' terminato con codice {return_code} dopo {duration:.2f} secondi.")
                 logging.warning(f"[{flow_name}] L'output del task potrebbe contenere dettagli sull'errore, ma non può essere catturato direttamente in questa modalità. Controllare i log specifici del task, se disponibili.")
-                logging.warning(f"[{flow_name}] Flusso interrotto a causa di un errore nel task.")
-                break
+                logging.warning(f"[{flow_name}] Proseguo con il task successivo.")
 
         except Exception as e:
             logging.critical(f"[{flow_name}] Errore critico durante l'esecuzione del task '{task_name}': {e}")
-            logging.warning(f"[{flow_name}] Flusso interrotto a causa di un'eccezione.")
-            break
+            logging.warning(f"[{flow_name}] Proseguo con il task successivo.")
 
     logging.info(f"Flusso '{flow_name}' terminato.")

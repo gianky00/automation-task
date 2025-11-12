@@ -58,6 +58,15 @@ def _parse_task_path_from_xml(filepath):
     raise ValueError("Nessun percorso di script supportato (.py, .bat, .ps1) trovato in <Arguments> o <Command>.")
 
 
+def format_duration(seconds):
+    """Converte i secondi in una stringa formattata HH:MM:SS."""
+    if seconds is None:
+        return "N/D"
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+
+
 class WorkflowConfiguratorApp:
     def __init__(self, root):
         self.root = root
@@ -86,6 +95,7 @@ class WorkflowConfiguratorApp:
         self.root.after(100, self.poll_log_queue)
         self.root.after(100, self.update_status_bar) # Avvia subito il primo controllo
         self.root.after(3000, self.refresh_task_list_if_needed) # Avvia il refresh dei task
+        self.root.after(3000, self.refresh_workflow_totals) # Avvia il refresh dei totali
 
     def load_workflows(self):
         try:
@@ -119,7 +129,7 @@ class WorkflowConfiguratorApp:
         ttk.Label(left_pane, text="Flussi di Lavoro", font=("Arial", 12, "bold")).pack(pady=5)
         workflows_frame = ttk.Frame(left_pane)
         workflows_frame.pack(fill=tk.BOTH, expand=True)
-        self.workflows_listbox = tk.Listbox(workflows_frame, exportselection=False)
+        self.workflows_listbox = tk.Listbox(workflows_frame, exportselection=False, font=("Consolas", 10))
         self.workflows_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar_workflows = ttk.Scrollbar(workflows_frame, orient=tk.VERTICAL, command=self.workflows_listbox.yview)
         scrollbar_workflows.pack(side=tk.RIGHT, fill=tk.Y)
@@ -238,19 +248,82 @@ class WorkflowConfiguratorApp:
         # Ripianifica il controllo
         self.root.after(5000, self.update_status_bar) # Controlla ogni 5 secondi
 
+    def _calculate_workflow_totals(self, task_list):
+        """Calcola i tempi totali min/max per una lista di task."""
+        total_min = 0.0
+        total_max = 0.0
+
+        for task in task_list:
+            task_path = task.get('path')
+            if task_path:
+                stats = self.task_stats.get(task_path)
+                if stats:
+                    total_min += stats.get('min', 0.0)
+                    total_max += stats.get('max', 0.0)
+
+        return total_min, total_max
+
+    def _format_workflow_for_display(self, name, total_min, total_max):
+        """Formatta il nome del flusso e i totali in una stringa allineata."""
+        MAX_NAME_LEN = 25
+
+        if len(name) > MAX_NAME_LEN:
+            display_name = name[:MAX_NAME_LEN-3] + "..."
+        else:
+            display_name = name
+
+        padded_name = display_name.ljust(MAX_NAME_LEN)
+
+        if total_min > 0 or total_max > 0:
+            min_str = format_duration(total_min).rjust(9)
+            max_str = format_duration(total_max).rjust(9)
+            return f"{padded_name} | Min: {min_str} | Max: {max_str}"
+        else:
+            return padded_name
+
     def populate_workflows_list(self):
+        """Popola la lista dei flussi di lavoro con i totali formattati."""
+        self.task_stats = self.load_task_stats() # Assicura che le stats siano aggiornate
+
+        selection = self.workflows_listbox.curselection()
+
         self.workflows_listbox.delete(0, tk.END)
         for name in sorted(self.workflows.keys()):
-            self.workflows_listbox.insert(tk.END, name)
+            tasks = self.workflows.get(name, {}).get("tasks", [])
+            total_min, total_max = self._calculate_workflow_totals(tasks)
+            display_text = self._format_workflow_for_display(name, total_min, total_max)
+            self.workflows_listbox.insert(tk.END, display_text)
+
+        if selection:
+            self.workflows_listbox.selection_set(selection[0])
+
+    def refresh_workflow_totals(self):
+        """Funzione di polling per aggiornare i totali dei flussi di lavoro."""
+        self.populate_workflows_list()
+        self.root.after(3000, self.refresh_workflow_totals)
 
     def on_workflow_select(self, event):
         selection_indices = self.workflows_listbox.curselection()
-        if not selection_indices: return
-        if self.selected_workflow_name:
-            self.update_workflow_from_ui(self.selected_workflow_name)
+        if not selection_indices:
+            return
+
         selected_index = selection_indices[0]
-        self.selected_workflow_name = self.workflows_listbox.get(selected_index)
-        self.populate_workflow_details(self.selected_workflow_name)
+        full_text = self.workflows_listbox.get(selected_index)
+
+        # Estrai il nome del flusso dalla stringa formattata (prima del separatore '|')
+        try:
+            flow_name = full_text.split('|')[0].strip()
+        except IndexError:
+            flow_name = full_text.strip()
+
+        # Non salvare le modifiche se si sta solo cliccando sulla stessa voce
+        if self.selected_workflow_name and self.selected_workflow_name != flow_name:
+            self.update_workflow_from_ui(self.selected_workflow_name)
+
+        # Evita di ricaricare inutilmente se il flusso selezionato non è cambiato
+        if self.selected_workflow_name != flow_name:
+            self.selected_workflow_name = flow_name
+            self.populate_workflow_details(flow_name)
 
     def refresh_task_list_if_needed(self):
         """
@@ -279,8 +352,8 @@ class WorkflowConfiguratorApp:
             task_name = task.get('name', 'Task Senza Nome')
             stats = self.task_stats.get(task_path)
 
-            min_t_str = f"{stats['min']:.2f}s" if stats and 'min' in stats else "N/D"
-            max_t_str = f"{stats['max']:.2f}s" if stats and 'max' in stats else "N/D"
+            min_t_str = format_duration(stats.get('min'))
+            max_t_str = format_duration(stats.get('max'))
 
             # L'item ID (iid) può essere l'indice per un facile riferimento
             self.tasks_tree.insert("", tk.END, iid=i, values=(task_name, min_t_str, max_t_str))
@@ -358,10 +431,18 @@ class WorkflowConfiguratorApp:
             return
 
         flow_name = self.selected_workflow_name
-        tasks = self.current_tasks
 
-        if not tasks:
-            messagebox.showinfo("Informazione", f"Il flusso '{flow_name}' non ha task da eseguire.")
+        # Determina il punto di partenza
+        start_index = 0
+        selected_iids = self.tasks_tree.selection()
+        if selected_iids:
+            # L'iid è l'indice della riga che abbiamo impostato
+            start_index = int(selected_iids[0])
+
+        tasks_to_run = self.current_tasks[start_index:]
+
+        if not tasks_to_run:
+            messagebox.showinfo("Informazione", f"Nessun task da eseguire per il flusso '{flow_name}'.")
             return
 
         # Pulisci i log precedenti prima di una nuova esecuzione
@@ -372,9 +453,9 @@ class WorkflowConfiguratorApp:
         # Esegui in un thread per non bloccare la GUI
         execution_thread = threading.Thread(
             target=execute_flow,
-            args=(f"{flow_name} (Manuale)", tasks)
+            args=(f"{flow_name} (Manuale)", tasks_to_run)
         )
-        execution_thread.daemon = True # Permette all'app di chiudersi anche se il thread è in esecuzione
+        execution_thread.daemon = True
         execution_thread.start()
 
     def import_task_from_xml(self):
