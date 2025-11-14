@@ -116,11 +116,17 @@ def execute_flow(flow_name, tasks):
                     next_task_name = tasks[i+1].get('name', 'Task Senza Nome')
                     logging.info(f"[{flow_name}] Prossimo task: '{next_task_name}'")
             else:
+                # Se il task fallisce, logga tutto l'output e interrompi il flusso
                 logging.error(f"[{flow_name}] ERRORE: Task '{task_name}' terminato con codice {result.returncode} dopo {duration:.2f} secondi.")
+
+                # Logga sia stdout che stderr perché l'errore può finire in entrambi
+                if result.stdout:
+                    logging.error(f"[{flow_name}] Output standard del task '{task_name}':\n{result.stdout.strip()}")
                 if result.stderr:
                     logging.error(f"[{flow_name}] Errore standard del task '{task_name}':\n{result.stderr.strip()}")
-                logging.warning(f"[{flow_name}] Flusso interrotto a causa di un errore nel task.")
-                break
+
+                logging.critical(f"[{flow_name}] FLUSSO INTERROTTO a causa di un errore nel task '{task_name}'. I task successivi non verranno eseguiti.")
+                break # Interrompe il ciclo for
 
         except Exception as e:
             logging.critical(f"[{flow_name}] Errore critico durante l'esecuzione del task '{task_name}': {e}")
