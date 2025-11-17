@@ -157,8 +157,11 @@ class WorkflowConfiguratorApp:
         name_frame = ttk.Frame(details_frame)
         name_frame.pack(fill=tk.X, pady=5)
         ttk.Label(name_frame, text="Nome Flusso:", width=15).pack(side=tk.LEFT)
-        self.flow_name_entry = ttk.Entry(name_frame)
+        self.flow_name_var = tk.StringVar()
+        self.flow_name_entry = ttk.Entry(name_frame, textvariable=self.flow_name_var)
         self.flow_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.flow_name_entry.bind("<FocusOut>", self.on_workflow_name_change)
+        self.flow_name_entry.bind("<Return>", self.on_workflow_name_change)
         tasks_frame = ttk.LabelFrame(details_frame, text="Task Sequenziali (doppio click per modificare)")
         tasks_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
@@ -284,7 +287,7 @@ class WorkflowConfiguratorApp:
         flow_data = self.workflows.get(flow_name)
         if not flow_data: return
 
-        self.flow_name_entry.insert(0, flow_name)
+        self.flow_name_var.set(flow_name)
         self.current_tasks = flow_data.get("tasks", [])
 
         # Pulisci la treeview prima di ripopolarla
@@ -624,17 +627,12 @@ class WorkflowConfiguratorApp:
                 messagebox.showwarning("Dati non validi", "Nome e percorso non possono essere vuoti.", parent=dialog)
                 return
 
-            # Aggiorna sia i dati interni che la listbox
-            self.current_tasks[index] = {'name': new_name, 'path': new_path}
+            # Aggiorna i dati interni
+            self.current_tasks[index]['name'] = new_name
+            self.current_tasks[index]['path'] = new_path
 
-            # Ricarica i dettagli del flusso per aggiornare la vista
-            self.populate_workflow_details(self.selected_workflow_name)
-
-            # (Opzionale) Prova a riselezionare l'elemento modificato
-            children = self.tasks_tree.get_children()
-            if index < len(children):
-                self.tasks_tree.selection_set(children[index])
-                self.tasks_tree.focus(children[index])
+            # Aggiorna direttamente l'elemento nella Treeview per reattività immediata
+            self.tasks_tree.item(item, values=(new_name, self.tasks_tree.item(item, 'values')[1], self.tasks_tree.item(item, 'values')[2]))
 
             dialog.destroy()
 
@@ -650,6 +648,34 @@ class WorkflowConfiguratorApp:
         dialog.bind("<Escape>", lambda e: on_cancel())
 
         self.root.wait_window(dialog)
+
+    def on_workflow_name_change(self, event=None):
+        """Gestisce la rinomina di un flusso in modo reattivo."""
+        if not self.selected_workflow_name:
+            return
+
+        new_name = self.flow_name_var.get().strip()
+        old_name = self.selected_workflow_name
+
+        if not new_name or new_name == old_name:
+            self.flow_name_var.set(old_name) # Ripristina se vuoto o invariato
+            return
+
+        if new_name in self.workflows:
+            messagebox.showwarning("Nome Duplicato", f"Un flusso di lavoro con il nome '{new_name}' esiste già.")
+            self.flow_name_var.set(old_name) # Ripristina il nome originale
+            return
+
+        # Aggiorna il dizionario
+        self.workflows[new_name] = self.workflows.pop(old_name)
+        self.selected_workflow_name = new_name
+
+        # Aggiorna la Listbox in modo reattivo
+        selected_index = self.workflows_listbox.curselection()
+        if selected_index:
+            self.workflows_listbox.delete(selected_index[0])
+            self.workflows_listbox.insert(selected_index[0], new_name)
+            self.workflows_listbox.selection_set(selected_index[0])
 
     def display_log_record(self, record):
         """Aggiunge un record di log al widget di testo."""
