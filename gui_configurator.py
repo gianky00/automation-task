@@ -58,6 +58,19 @@ def _parse_task_path_from_xml(filepath):
     raise ValueError("Nessun percorso di script supportato (.py, .bat, .ps1) trovato in <Arguments> o <Command>.")
 
 
+def format_duration(seconds):
+    """Converte una durata in secondi in una stringa formattata HH:MM:SS.ss."""
+    if seconds is None:
+        return ""
+    try:
+        seconds = float(seconds)
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{int(hours):02}:{int(minutes):02}:{seconds:05.2f}"
+    except (ValueError, TypeError):
+        return "Invalido"
+
+
 class WorkflowConfiguratorApp:
     def __init__(self, root):
         self.root = root
@@ -139,9 +152,23 @@ class WorkflowConfiguratorApp:
         self.flow_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         tasks_frame = ttk.LabelFrame(details_frame, text="Task Sequenziali (doppio click per modificare)")
         tasks_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        self.tasks_listbox = tk.Listbox(tasks_frame, selectmode=tk.EXTENDED)
-        self.tasks_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.tasks_listbox.bind("<Double-1>", self.edit_selected_task)
+
+        self.tasks_tree = ttk.Treeview(
+            tasks_frame,
+            columns=("task_name", "min_time", "max_time"),
+            show="headings"
+        )
+        self.tasks_tree.heading("task_name", text="Task")
+        self.tasks_tree.heading("min_time", text="Tempo Min")
+        self.tasks_tree.heading("max_time", text="Tempo Max")
+
+        self.tasks_tree.column("task_name", width=400)
+        self.tasks_tree.column("min_time", width=100, anchor=tk.E)
+        self.tasks_tree.column("max_time", width=100, anchor=tk.E)
+
+        self.tasks_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.tasks_tree.bind("<Double-1>", self.edit_selected_task)
+
         task_buttons_frame = ttk.Frame(tasks_frame)
         task_buttons_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
         ttk.Button(task_buttons_frame, text="Aggiungi Task", command=self.add_task).pack(fill=tk.X, pady=2)
@@ -238,9 +265,11 @@ class WorkflowConfiguratorApp:
         if not flow_data: return
 
         self.flow_name_entry.insert(0, flow_name)
-
         self.current_tasks = flow_data.get("tasks", [])
-        self.tasks_listbox.delete(0, tk.END) # Pulisci la lista prima di ripopolarla
+
+        # Pulisci la treeview prima di ripopolarla
+        for i in self.tasks_tree.get_children():
+            self.tasks_tree.delete(i)
 
         # Ricarica le statistiche più recenti ogni volta che si seleziona un flusso
         self.task_stats = self.load_task_stats()
@@ -249,14 +278,11 @@ class WorkflowConfiguratorApp:
             task_path = task.get('path', '')
             task_name = task.get('name', 'Task Senza Nome')
 
-            stats = self.task_stats.get(task_path)
-            display_text = task_name
-            if stats:
-                min_t = f"{stats.get('min', 0):.2f}s"
-                max_t = f"{stats.get('max', 0):.2f}s"
-                display_text += f"  [min: {min_t}, max: {max_t}]"
+            stats = self.task_stats.get(task_path, {})
+            min_t = format_duration(stats.get('min'))
+            max_t = format_duration(stats.get('max'))
 
-            self.tasks_listbox.insert(tk.END, display_text)
+            self.tasks_tree.insert("", tk.END, values=(task_name, min_t, max_t))
 
         hour, minute = map(int, flow_data.get("schedule_time", "00:00").split(':'))
         self.hour_spinbox.set(f"{hour:02}")
@@ -450,49 +476,54 @@ class WorkflowConfiguratorApp:
             task_name = os.path.splitext(os.path.basename(task_path))[0]
             new_task = {'name': task_name, 'path': task_path}
             self.current_tasks.append(new_task)
-            self.tasks_listbox.insert(tk.END, new_task['name'])
+            self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
 
     def remove_task(self):
-        selected_indices = self.tasks_listbox.curselection()
-        if not selected_indices: return
-        for i in sorted(selected_indices, reverse=True):
-            self.tasks_listbox.delete(i)
-            self.current_tasks.pop(i)
+        selected_items = self.tasks_tree.selection()
+        if not selected_items: return
+
+        # Crea una lista di indici da rimuovere per evitare problemi di mutazione
+        indices_to_remove = sorted([self.tasks_tree.index(item) for item in selected_items], reverse=True)
+
+        for index in indices_to_remove:
+            self.current_tasks.pop(index)
+
+        # Rimuovi gli elementi dalla Treeview
+        for item in selected_items:
+            self.tasks_tree.delete(item)
+
 
     def move_task_up(self):
-        selected_indices = self.tasks_listbox.curselection()
-        if not selected_indices: return
-        for i in selected_indices:
-            if i > 0:
-                # Muovi sia nella listbox che nella lista di dati
-                task_name = self.tasks_listbox.get(i)
-                self.tasks_listbox.delete(i)
-                self.tasks_listbox.insert(i - 1, task_name)
-                self.tasks_listbox.selection_set(i - 1)
+        selected_items = self.tasks_tree.selection()
+        if not selected_items: return
 
-                task_data = self.current_tasks.pop(i)
-                self.current_tasks.insert(i - 1, task_data)
+        for item in selected_items:
+            index = self.tasks_tree.index(item)
+            if index > 0:
+                self.tasks_tree.move(item, "", index - 1)
+                # Aggiorna anche la lista dati
+                task_data = self.current_tasks.pop(index)
+                self.current_tasks.insert(index - 1, task_data)
 
     def move_task_down(self):
-        selected_indices = self.tasks_listbox.curselection()
-        if not selected_indices: return
-        for i in sorted(selected_indices, reverse=True):
-            if i < self.tasks_listbox.size() - 1:
-                # Muovi sia nella listbox che nella lista di dati
-                task_name = self.tasks_listbox.get(i)
-                self.tasks_listbox.delete(i)
-                self.tasks_listbox.insert(i + 1, task_name)
-                self.tasks_listbox.selection_set(i + 1)
+        selected_items = self.tasks_tree.selection()
+        if not selected_items: return
 
-                task_data = self.current_tasks.pop(i)
-                self.current_tasks.insert(i + 1, task_data)
+        for item in reversed(selected_items): # Muovi dal basso per evitare conflitti di indice
+            index = self.tasks_tree.index(item)
+            if index < len(self.current_tasks) - 1:
+                self.tasks_tree.move(item, "", index + 1)
+                # Aggiorna anche la lista dati
+                task_data = self.current_tasks.pop(index)
+                self.current_tasks.insert(index + 1, task_data)
 
     def edit_selected_task(self, event=None):
-        selected_indices = self.tasks_listbox.curselection()
-        if not selected_indices:
+        selected_items = self.tasks_tree.selection()
+        if not selected_items:
             return
 
-        index = selected_indices[0]
+        item = selected_items[0]
+        index = self.tasks_tree.index(item)
         task_data = self.current_tasks[index]
 
         dialog = tk.Toplevel(self.root)
@@ -525,9 +556,16 @@ class WorkflowConfiguratorApp:
 
             # Aggiorna sia i dati interni che la listbox
             self.current_tasks[index] = {'name': new_name, 'path': new_path}
-            self.tasks_listbox.delete(index)
-            self.tasks_listbox.insert(index, new_name)
-            self.tasks_listbox.selection_set(index)
+
+            # Ricarica i dettagli del flusso per aggiornare la vista
+            self.populate_workflow_details(self.selected_workflow_name)
+
+            # (Opzionale) Prova a riselezionare l'elemento modificato
+            children = self.tasks_tree.get_children()
+            if index < len(children):
+                self.tasks_tree.selection_set(children[index])
+                self.tasks_tree.focus(children[index])
+
             dialog.destroy()
 
         def on_cancel():
