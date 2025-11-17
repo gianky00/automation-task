@@ -1,11 +1,322 @@
 {
-    "Test Esecuzione Generalizzata": {
+    "Nuovo Flusso 1": {
+        "tasks": [
+            {
+                "name": "2. cambia data programmazione ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\stampa_attivita_analisi\\cambia_data_programmazione_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "2. cambia data programmazione STRUMENTALI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\stampa_attivita_strumentali\\cambia_data_programmazione.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione attuale ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_attuale\\rileva_programmazione_attuale_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione attuale STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_attuale\\rileva_programmazione_attuale.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione prossima ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_prossima\\rileva_programmazione_prossima_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione prossima STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_prossima\\rileva_programmazione_prossima.py",
+                "enabled": true
+            },
+            {
+                "name": "4. aggiorna pdl aperti ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "4. aggiorna pdl aperti STRUMENTALI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti.py",
+                "enabled": true
+            },
+            {
+                "name": "5. controllo flag programmazione ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\mancata_programmazione_analisi\\mancata_programmazione_analisi.py",
+                "enabled": true
+            },
+            {
+                "name": "5. controllo flag programmazione STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\mancata_programmazione_strumentali\\mancata_programmazione_strumentali.py",
+                "enabled": true
+            },
+            {
+                "name": "6. prenota pdl ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\prenotazione_pdl_ANALISI\\prenotazione_pdl_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "6. prenota pdl STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\prenotazione_pdl\\SafeWorkPrenotaPDL.py",
+                "enabled": true
+            },
+            {
+                "name": "7. crea giornaliera di cantiere",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\crea_giornaliera_cantiere\\crea_giornaliera_cantiere.bat",
+                "enabled": true
+            },
+            {
+                "name": "8. controllo Apertura PdL ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\controllo_pdl_ANALISI.ps1",
+                "enabled": true
+            },
+            {
+                "name": "8. controllo Apertura PdL STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\controllo_pdl.ps1",
+                "enabled": true
+            },
+            {
+                "name": "9. ripristino formule automatiche",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\ripristino_formule_ automatiche_ Excel\\ripristino_formule_automatiche.py",
+                "enabled": true
+            }
+        ],
+        "schedule_time": "09:00",
+        "schedule_days": []
+    },
+    "prova4": {
         "tasks": [
             "tasks/task1.py",
             "tasks/task.bat",
-            "tasks/task.ps1"
+            "tasks/task.ps1",
+            {
+                "name": "2. cambia data programmazione ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\stampa_attivita_analisi\\cambia_data_programmazione_ANALISI.py"
+            },
+            {
+                "name": "2. cambia data programmazione STRUMENTALI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\stampa_attivita_strumentali\\cambia_data_programmazione.py"
+            },
+            {
+                "name": "3. programmazione attuale ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_attuale\\rileva_programmazione_attuale_ANALISI.py"
+            },
+            {
+                "name": "3. programmazione attuale STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_attuale\\rileva_programmazione_attuale.py"
+            },
+            {
+                "name": "3. programmazione prossima ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_prossima\\rileva_programmazione_prossima_ANALISI.py",
+                "enabled": false
+            },
+            {
+                "name": "3. programmazione prossima STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_prossima\\rileva_programmazione_prossima.py"
+            },
+            {
+                "name": "4. aggiorna pdl aperti ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti_ANALISI.py"
+            },
+            {
+                "name": "4. aggiorna pdl aperti STRUMENTALI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti.py"
+            },
+            {
+                "name": "5. controllo flag programmazione ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\mancata_programmazione_analisi\\mancata_programmazione_analisi.py"
+            },
+            {
+                "name": "5. controllo flag programmazione STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\mancata_programmazione_strumentali\\mancata_programmazione_strumentali.py"
+            },
+            {
+                "name": "6. prenota pdl ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\prenotazione_pdl_ANALISI\\prenotazione_pdl_ANALISI.py"
+            },
+            {
+                "name": "6. prenota pdl STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\prenotazione_pdl\\SafeWorkPrenotaPDL.py"
+            },
+            {
+                "name": "7. crea giornaliera di cantiere",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\crea_giornaliera_cantiere\\crea_giornaliera_cantiere.bat"
+            },
+            {
+                "name": "8. controllo Apertura PdL ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\controllo_pdl_ANALISI.ps1"
+            },
+            {
+                "name": "8. controllo Apertura PdL STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\controllo_pdl.ps1"
+            },
+            {
+                "name": "9. ripristino formule automatiche",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\ripristino_formule_ automatiche_ Excel\\ripristino_formule_automatiche.py"
+            },
+            {
+                "name": "2. cambia data programmazione ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\stampa_attivita_analisi\\cambia_data_programmazione_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "2. cambia data programmazione STRUMENTALI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\stampa_attivita_strumentali\\cambia_data_programmazione.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione attuale ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_attuale\\rileva_programmazione_attuale_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione attuale STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_attuale\\rileva_programmazione_attuale.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione prossima ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_prossima\\rileva_programmazione_prossima_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione prossima STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_prossima\\rileva_programmazione_prossima.py",
+                "enabled": true
+            },
+            {
+                "name": "4. aggiorna pdl aperti ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "4. aggiorna pdl aperti STRUMENTALI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti.py",
+                "enabled": true
+            },
+            {
+                "name": "5. controllo flag programmazione ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\mancata_programmazione_analisi\\mancata_programmazione_analisi.py",
+                "enabled": true
+            },
+            {
+                "name": "5. controllo flag programmazione STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\mancata_programmazione_strumentali\\mancata_programmazione_strumentali.py",
+                "enabled": true
+            },
+            {
+                "name": "6. prenota pdl ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\prenotazione_pdl_ANALISI\\prenotazione_pdl_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "6. prenota pdl STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\prenotazione_pdl\\SafeWorkPrenotaPDL.py",
+                "enabled": true
+            },
+            {
+                "name": "7. crea giornaliera di cantiere",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\crea_giornaliera_cantiere\\crea_giornaliera_cantiere.bat",
+                "enabled": true
+            },
+            {
+                "name": "8. controllo Apertura PdL ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\controllo_pdl_ANALISI.ps1",
+                "enabled": true
+            },
+            {
+                "name": "8. controllo Apertura PdL STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\controllo_pdl.ps1",
+                "enabled": true
+            },
+            {
+                "name": "9. ripristino formule automatiche",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\ripristino_formule_ automatiche_ Excel\\ripristino_formule_automatiche.py",
+                "enabled": true
+            },
+            {
+                "name": "2. cambia data programmazione ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\stampa_attivita_analisi\\cambia_data_programmazione_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "2. cambia data programmazione STRUMENTALI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\stampa_attivita_strumentali\\cambia_data_programmazione.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione attuale ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_attuale\\rileva_programmazione_attuale_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione attuale STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_attuale\\rileva_programmazione_attuale.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione prossima ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_prossima\\rileva_programmazione_prossima_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "3. programmazione prossima STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_programmazione_prossima\\rileva_programmazione_prossima.py",
+                "enabled": true
+            },
+            {
+                "name": "4. aggiorna pdl aperti ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "4. aggiorna pdl aperti STRUMENTALI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\rileva_pdl_aperti\\rileva_pdl_aperti.py",
+                "enabled": true
+            },
+            {
+                "name": "5. controllo flag programmazione ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\mancata_programmazione_analisi\\mancata_programmazione_analisi.py",
+                "enabled": true
+            },
+            {
+                "name": "5. controllo flag programmazione STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\mancata_programmazione_strumentali\\mancata_programmazione_strumentali.py",
+                "enabled": true
+            },
+            {
+                "name": "6. prenota pdl ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\prenotazione_pdl_ANALISI\\prenotazione_pdl_ANALISI.py",
+                "enabled": true
+            },
+            {
+                "name": "6. prenota pdl STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\safework\\prenotazione_pdl\\SafeWorkPrenotaPDL.py",
+                "enabled": true
+            },
+            {
+                "name": "7. crea giornaliera di cantiere",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\crea_giornaliera_cantiere\\crea_giornaliera_cantiere.bat",
+                "enabled": true
+            },
+            {
+                "name": "8. controllo Apertura PdL ANALISI",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\controllo_pdl_ANALISI.ps1",
+                "enabled": true
+            },
+            {
+                "name": "8. controllo Apertura PdL STRUMENTALE",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\controllo_pdl.ps1",
+                "enabled": true
+            },
+            {
+                "name": "9. ripristino formule automatiche",
+                "path": "C:\\Users\\Coemi\\Desktop\\SCRIPT\\script per cantiere\\ripristino_formule_ automatiche_ Excel\\ripristino_formule_automatiche.py",
+                "enabled": true
+            }
         ],
-        "schedule_time": "05:51",
-        "schedule_days": [ 0 ]
+        "schedule_time": "00:00",
+        "schedule_days": []
     }
 }
