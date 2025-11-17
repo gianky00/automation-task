@@ -120,14 +120,11 @@ class WorkflowConfiguratorApp:
         with open(CONFIG_FILE, 'w') as f:
             json.dump(self.workflows, f, indent=4)
 
-    def save_workflows(self):
-        """Salva tutti i flussi e mostra un messaggio di conferma."""
-        try:
+    def _autosave(self):
+        """Salva automaticamente le modifiche al flusso di lavoro corrente."""
+        if self.selected_workflow_name:
+            self.update_workflow_from_ui(self.selected_workflow_name)
             self._save_workflows_to_file()
-            messagebox.showinfo("Successo", "Configurazione di tutti i flussi salvata con successo!")
-        except Exception as e:
-            logging.error(f"Errore durante il salvataggio dei flussi: {e}")
-            messagebox.showerror("Errore di Salvataggio", f"Impossibile salvare i flussi di lavoro.\n\nDettagli: {e}")
 
     def create_widgets(self):
         main_frame = ttk.Frame(self.root, padding="10")
@@ -204,10 +201,10 @@ class WorkflowConfiguratorApp:
         time_frame = ttk.Frame(schedule_frame)
         time_frame.pack(pady=5)
         ttk.Label(time_frame, text="Esegui alle ore:").pack(side=tk.LEFT, padx=5)
-        self.hour_spinbox = ttk.Spinbox(time_frame, from_=0, to=23, width=5, format="%02.0f")
+        self.hour_spinbox = ttk.Spinbox(time_frame, from_=0, to=23, width=5, format="%02.0f", command=self._schedule_changed)
         self.hour_spinbox.pack(side=tk.LEFT)
         ttk.Label(time_frame, text=":").pack(side=tk.LEFT)
-        self.minute_spinbox = ttk.Spinbox(time_frame, from_=0, to=59, width=5, format="%02.0f")
+        self.minute_spinbox = ttk.Spinbox(time_frame, from_=0, to=59, width=5, format="%02.0f", command=self._schedule_changed)
         self.minute_spinbox.pack(side=tk.LEFT)
         days_frame = ttk.Frame(schedule_frame)
         days_frame.pack(pady=5)
@@ -215,7 +212,7 @@ class WorkflowConfiguratorApp:
         self.day_vars = [tk.BooleanVar() for _ in range(7)]
         days = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
         for i, day in enumerate(days):
-            ttk.Checkbutton(days_frame, text=day, variable=self.day_vars[i]).pack(side=tk.LEFT)
+            ttk.Checkbutton(days_frame, text=day, variable=self.day_vars[i], command=self._schedule_changed).pack(side=tk.LEFT)
 
         action_frame = ttk.Frame(right_pane)
         action_frame.pack(fill=tk.X, pady=10)
@@ -225,9 +222,6 @@ class WorkflowConfiguratorApp:
 
         run_selected_button = ttk.Button(action_frame, text="Esegui Task Selezionato", command=self.run_selected_task)
         run_selected_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
-
-        save_button = ttk.Button(action_frame, text="SALVA TUTTE LE MODIFICHE", command=self.save_workflows)
-        save_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5, 0))
 
         # --- Area Log ---
         log_frame = ttk.LabelFrame(self.root, text="Log di Esecuzione", padding="10")
@@ -267,6 +261,10 @@ class WorkflowConfiguratorApp:
 
         # Ripianifica il controllo
         self.root.after(5000, self.update_status_bar) # Controlla ogni 5 secondi
+
+    def _schedule_changed(self):
+        """Callback per quando l'utente modifica l'orario o i giorni."""
+        self._autosave()
 
     def populate_workflows_list(self):
         self.workflows_listbox.delete(0, tk.END)
@@ -349,6 +347,7 @@ class WorkflowConfiguratorApp:
         while f"Nuovo Flusso {i}" in self.workflows: i += 1
         new_name = f"Nuovo Flusso {i}"
         self.workflows[new_name] = {"tasks": [], "schedule_time": "09:00", "schedule_days": []}
+        self._autosave()
         self.populate_workflows_list()
         self.workflows_listbox.selection_set(tk.END)
         self.on_workflow_select(None)
@@ -359,6 +358,8 @@ class WorkflowConfiguratorApp:
             return
         if messagebox.askyesno("Conferma", f"Sei sicuro di voler eliminare il flusso '{self.selected_workflow_name}'?"):
             del self.workflows[self.selected_workflow_name]
+            # Salva subito dopo la rimozione, prima di resettare la selezione
+            self._save_workflows_to_file()
             self.selected_workflow_name = None
             self.clear_details_panel()
             self.populate_workflows_list()
@@ -435,7 +436,7 @@ class WorkflowConfiguratorApp:
             new_task = {'name': task_name, 'path': task_path, 'enabled': True}
             self.current_tasks.append(new_task)
             self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
-
+            self._autosave()
             messagebox.showinfo("Successo", f"Task '{task_name}' importato e aggiunto al flusso.")
 
         except (ET.ParseError, ValueError) as e:
@@ -475,7 +476,8 @@ class WorkflowConfiguratorApp:
                 # Registra anche i file che non sono XML
                 if os.path.isfile(filepath): # Assicurati che sia un file
                     ignored_files.append({'file': filename, 'reason': 'File non XML'})
-
+        if success_count > 0:
+            self._autosave()
         self.show_import_report(success_count, ignored_files)
 
 
@@ -533,6 +535,9 @@ class WorkflowConfiguratorApp:
             self.current_tasks.append(new_task)
             self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
 
+        if filepaths:
+            self._autosave()
+
     def remove_task(self):
         selected_items = self.tasks_tree.selection()
         if not selected_items: return
@@ -546,6 +551,9 @@ class WorkflowConfiguratorApp:
         # Rimuovi gli elementi dalla Treeview
         for item in selected_items:
             self.tasks_tree.delete(item)
+
+        if selected_items:
+            self._autosave()
 
     def toggle_task_enabled(self):
         """Inverte lo stato 'enabled' dei task selezionati."""
@@ -562,6 +570,9 @@ class WorkflowConfiguratorApp:
             is_currently_enabled = task_data.get('enabled', True)
             task_data['enabled'] = not is_currently_enabled
 
+        if selected_items:
+            self._autosave()
+
         # Aggiorna la visualizzazione per riflettere il nuovo stato
         self.populate_workflow_details(self.selected_workflow_name)
 
@@ -577,6 +588,8 @@ class WorkflowConfiguratorApp:
                 # Aggiorna anche la lista dati
                 task_data = self.current_tasks.pop(index)
                 self.current_tasks.insert(index - 1, task_data)
+        if selected_items:
+            self._autosave()
 
     def move_task_down(self):
         selected_items = self.tasks_tree.selection()
@@ -589,6 +602,8 @@ class WorkflowConfiguratorApp:
                 # Aggiorna anche la lista dati
                 task_data = self.current_tasks.pop(index)
                 self.current_tasks.insert(index + 1, task_data)
+        if selected_items:
+            self._autosave()
 
     def edit_selected_task(self, event=None):
         selected_items = self.tasks_tree.selection()
@@ -633,7 +648,7 @@ class WorkflowConfiguratorApp:
 
             # Aggiorna direttamente l'elemento nella Treeview per reattività immediata
             self.tasks_tree.item(item, values=(new_name, self.tasks_tree.item(item, 'values')[1], self.tasks_tree.item(item, 'values')[2]))
-
+            self._autosave()
             dialog.destroy()
 
         def on_cancel():
@@ -669,7 +684,7 @@ class WorkflowConfiguratorApp:
         # Aggiorna il dizionario
         self.workflows[new_name] = self.workflows.pop(old_name)
         self.selected_workflow_name = new_name
-
+        self._autosave()
         # Aggiorna la Listbox in modo reattivo
         selected_index = self.workflows_listbox.curselection()
         if selected_index:
