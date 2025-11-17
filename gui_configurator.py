@@ -267,6 +267,8 @@ class WorkflowConfiguratorApp:
         self._autosave()
 
     def populate_workflows_list(self):
+        # Ricarica sempre dal file per garantire che la lista sia aggiornata
+        self.load_workflows()
         self.workflows_listbox.delete(0, tk.END)
         for name in sorted(self.workflows.keys()):
             self.workflows_listbox.insert(tk.END, name)
