@@ -108,3 +108,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Application specific
+config/
+logs/
