@@ -609,6 +609,20 @@ class WorkflowConfiguratorApp:
         # Richiama se stessa dopo 100ms
         self.root.after(100, self.poll_log_queue)
 
+    def on_closing(self):
+        """Gestisce il salvataggio prima della chiusura e chiede conferma in caso di errore."""
+        try:
+            self._save_workflows_to_file()
+        except Exception as e:
+            logging.error(f"Errore durante il salvataggio automatico alla chiusura: {e}")
+            if not messagebox.askyesno(
+                "Errore di Salvataggio",
+                "Impossibile salvare le modifiche. Chiudere comunque l'applicazione?\n"
+                "Eventuali modifiche non salvate andranno perse."
+            ):
+                return  # L'utente ha scelto di non chiudere
+        self.root.destroy()
+
 
 if __name__ == "__main__":
     root = tk.Tk()
