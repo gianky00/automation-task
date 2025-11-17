@@ -682,15 +682,30 @@ class WorkflowConfiguratorApp:
             return
 
         # Aggiorna il dizionario
+        # Aggiorna i dati prima
+        self.update_workflow_from_ui(old_name)
+
+        # Rinomina nel dizionario
         self.workflows[new_name] = self.workflows.pop(old_name)
         self.selected_workflow_name = new_name
-        self._autosave()
-        # Aggiorna la Listbox in modo reattivo
-        selected_index = self.workflows_listbox.curselection()
-        if selected_index:
-            self.workflows_listbox.delete(selected_index[0])
-            self.workflows_listbox.insert(selected_index[0], new_name)
-            self.workflows_listbox.selection_set(selected_index[0])
+
+        # Salva le modifiche
+        self._save_workflows_to_file()
+
+        # Ricarica e riseleziona per coerenza
+        self.populate_workflows_list()
+
+        # Trova il nuovo indice e selezionalo
+        # Assicurati che la lista sia ordinata come in populate_workflows_list
+        sorted_workflows = sorted(self.workflows.keys())
+        try:
+            new_index = sorted_workflows.index(new_name)
+            self.workflows_listbox.selection_set(new_index)
+            self.workflows_listbox.activate(new_index)
+            self.workflows_listbox.see(new_index)
+        except ValueError:
+            # Gestisce il caso in cui il nome non venga trovato, anche se non dovrebbe accadere
+            logging.warning(f"Impossibile trovare il flusso rinominato '{new_name}' nella lista.")
 
     def display_log_record(self, record):
         """Aggiunge un record di log al widget di testo."""
