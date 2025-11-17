@@ -113,12 +113,21 @@ class WorkflowConfiguratorApp:
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
-    def save_workflows(self):
+    def _save_workflows_to_file(self):
+        """Salva la configurazione corrente dei flussi su file senza mostrare UI."""
         if self.selected_workflow_name:
             self.update_workflow_from_ui(self.selected_workflow_name)
         with open(CONFIG_FILE, 'w') as f:
             json.dump(self.workflows, f, indent=4)
-        messagebox.showinfo("Successo", "Configurazione di tutti i flussi salvata con successo!")
+
+    def save_workflows(self):
+        """Salva tutti i flussi e mostra un messaggio di conferma."""
+        try:
+            self._save_workflows_to_file()
+            messagebox.showinfo("Successo", "Configurazione di tutti i flussi salvata con successo!")
+        except Exception as e:
+            logging.error(f"Errore durante il salvataggio dei flussi: {e}")
+            messagebox.showerror("Errore di Salvataggio", f"Impossibile salvare i flussi di lavoro.\n\nDettagli: {e}")
 
     def create_widgets(self):
         main_frame = ttk.Frame(self.root, padding="10")
@@ -311,7 +320,8 @@ class WorkflowConfiguratorApp:
 
     def clear_details_panel(self):
         self.flow_name_entry.delete(0, tk.END)
-        self.tasks_listbox.delete(0, tk.END)
+        for i in self.tasks_tree.get_children():
+            self.tasks_tree.delete(i)
         self.current_tasks = []
         self.hour_spinbox.set("00")
         self.minute_spinbox.set("00")
@@ -379,7 +389,7 @@ class WorkflowConfiguratorApp:
 
             new_task = {'name': task_name, 'path': task_path}
             self.current_tasks.append(new_task)
-            self.tasks_listbox.insert(tk.END, new_task['name'])
+            self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
 
             messagebox.showinfo("Successo", f"Task '{task_name}' importato e aggiunto al flusso.")
 
@@ -409,7 +419,7 @@ class WorkflowConfiguratorApp:
 
                     new_task = {'name': task_name, 'path': task_path}
                     self.current_tasks.append(new_task)
-                    self.tasks_listbox.insert(tk.END, new_task['name'])
+                    self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
                     success_count += 1
                 except (ET.ParseError, ValueError) as e:
                     # Aggiungi il file e il motivo specifico alla lista degli ignorati
@@ -599,8 +609,9 @@ class WorkflowConfiguratorApp:
         # Richiama se stessa dopo 100ms
         self.root.after(100, self.poll_log_queue)
 
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = WorkflowConfiguratorApp(root)
-    root.protocol("WM_DELETE_WINDOW", lambda: (app.save_workflows(), root.destroy()))
+    root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
