@@ -204,10 +204,10 @@ class WorkflowConfiguratorApp:
         time_frame = ttk.Frame(schedule_frame)
         time_frame.pack(pady=5)
         ttk.Label(time_frame, text="Esegui alle ore:").pack(side=tk.LEFT, padx=5)
-        self.hour_spinbox = ttk.Spinbox(time_frame, from_=0, to=23, width=5, format="%02.0f")
+        self.hour_spinbox = ttk.Spinbox(time_frame, from_=0, to=23, width=5, format="%02.0f", command=self.save_workflows)
         self.hour_spinbox.pack(side=tk.LEFT)
         ttk.Label(time_frame, text=":").pack(side=tk.LEFT)
-        self.minute_spinbox = ttk.Spinbox(time_frame, from_=0, to=59, width=5, format="%02.0f")
+        self.minute_spinbox = ttk.Spinbox(time_frame, from_=0, to=59, width=5, format="%02.0f", command=self.save_workflows)
         self.minute_spinbox.pack(side=tk.LEFT)
         days_frame = ttk.Frame(schedule_frame)
         days_frame.pack(pady=5)
@@ -215,7 +215,7 @@ class WorkflowConfiguratorApp:
         self.day_vars = [tk.BooleanVar() for _ in range(7)]
         days = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
         for i, day in enumerate(days):
-            ttk.Checkbutton(days_frame, text=day, variable=self.day_vars[i]).pack(side=tk.LEFT)
+            ttk.Checkbutton(days_frame, text=day, variable=self.day_vars[i], command=self.save_workflows).pack(side=tk.LEFT)
 
         action_frame = ttk.Frame(right_pane)
         action_frame.pack(fill=tk.X, pady=10)
@@ -225,9 +225,6 @@ class WorkflowConfiguratorApp:
 
         run_selected_button = ttk.Button(action_frame, text="Esegui Task Selezionato", command=self.run_selected_task)
         run_selected_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
-
-        save_button = ttk.Button(action_frame, text="SALVA TUTTE LE MODIFICHE", command=self.save_workflows)
-        save_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5, 0))
 
         # --- Area Log ---
         log_frame = ttk.LabelFrame(self.root, text="Log di Esecuzione", padding="10")
@@ -349,6 +346,7 @@ class WorkflowConfiguratorApp:
         while f"Nuovo Flusso {i}" in self.workflows: i += 1
         new_name = f"Nuovo Flusso {i}"
         self.workflows[new_name] = {"tasks": [], "schedule_time": "09:00", "schedule_days": []}
+        self.save_workflows()
         self.populate_workflows_list()
         self.workflows_listbox.selection_set(tk.END)
         self.on_workflow_select(None)
@@ -360,6 +358,7 @@ class WorkflowConfiguratorApp:
         if messagebox.askyesno("Conferma", f"Sei sicuro di voler eliminare il flusso '{self.selected_workflow_name}'?"):
             del self.workflows[self.selected_workflow_name]
             self.selected_workflow_name = None
+            self.save_workflows()
             self.clear_details_panel()
             self.populate_workflows_list()
 
@@ -435,7 +434,7 @@ class WorkflowConfiguratorApp:
             new_task = {'name': task_name, 'path': task_path, 'enabled': True}
             self.current_tasks.append(new_task)
             self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
-
+            self.save_workflows()
             messagebox.showinfo("Successo", f"Task '{task_name}' importato e aggiunto al flusso.")
 
         except (ET.ParseError, ValueError) as e:
@@ -476,6 +475,8 @@ class WorkflowConfiguratorApp:
                 if os.path.isfile(filepath): # Assicurati che sia un file
                     ignored_files.append({'file': filename, 'reason': 'File non XML'})
 
+        if success_count > 0:
+            self.save_workflows()
         self.show_import_report(success_count, ignored_files)
 
 
@@ -522,6 +523,9 @@ class WorkflowConfiguratorApp:
                 ("All files", "*.*")
             ]
         )
+        if not filepaths:
+            return
+
         for filepath in filepaths:
             try:
                 task_path = os.path.relpath(filepath)
@@ -532,6 +536,9 @@ class WorkflowConfiguratorApp:
             new_task = {'name': task_name, 'path': task_path, 'enabled': True}
             self.current_tasks.append(new_task)
             self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
+
+        self.save_workflows()
+        messagebox.showinfo("Successo", f"{len(filepaths)} task aggiunti con successo.")
 
     def remove_task(self):
         selected_items = self.tasks_tree.selection()
@@ -547,6 +554,9 @@ class WorkflowConfiguratorApp:
         for item in selected_items:
             self.tasks_tree.delete(item)
 
+        if selected_items:
+            self.save_workflows()
+
     def toggle_task_enabled(self):
         """Inverte lo stato 'enabled' dei task selezionati."""
         selected_items = self.tasks_tree.selection()
@@ -561,6 +571,9 @@ class WorkflowConfiguratorApp:
             # Inverte lo stato. Se la chiave non esiste, la imposta a False (disabilitato).
             is_currently_enabled = task_data.get('enabled', True)
             task_data['enabled'] = not is_currently_enabled
+
+        if selected_items:
+            self.save_workflows()
 
         # Aggiorna la visualizzazione per riflettere il nuovo stato
         self.populate_workflow_details(self.selected_workflow_name)
@@ -578,6 +591,9 @@ class WorkflowConfiguratorApp:
                 task_data = self.current_tasks.pop(index)
                 self.current_tasks.insert(index - 1, task_data)
 
+        if selected_items:
+            self.save_workflows()
+
     def move_task_down(self):
         selected_items = self.tasks_tree.selection()
         if not selected_items: return
@@ -589,6 +605,9 @@ class WorkflowConfiguratorApp:
                 # Aggiorna anche la lista dati
                 task_data = self.current_tasks.pop(index)
                 self.current_tasks.insert(index + 1, task_data)
+
+        if selected_items:
+            self.save_workflows()
 
     def edit_selected_task(self, event=None):
         selected_items = self.tasks_tree.selection()
@@ -634,6 +653,7 @@ class WorkflowConfiguratorApp:
             # Aggiorna direttamente l'elemento nella Treeview per reattività immediata
             self.tasks_tree.item(item, values=(new_name, self.tasks_tree.item(item, 'values')[1], self.tasks_tree.item(item, 'values')[2]))
 
+            self.save_workflows()
             dialog.destroy()
 
         def on_cancel():
@@ -658,24 +678,31 @@ class WorkflowConfiguratorApp:
         old_name = self.selected_workflow_name
 
         if not new_name or new_name == old_name:
-            self.flow_name_var.set(old_name) # Ripristina se vuoto o invariato
+            self.flow_name_var.set(old_name)
             return
 
         if new_name in self.workflows:
             messagebox.showwarning("Nome Duplicato", f"Un flusso di lavoro con il nome '{new_name}' esiste già.")
-            self.flow_name_var.set(old_name) # Ripristina il nome originale
+            self.flow_name_var.set(old_name)
             return
 
-        # Aggiorna il dizionario
-        self.workflows[new_name] = self.workflows.pop(old_name)
-        self.selected_workflow_name = new_name
+        # La rinomina avviene in update_workflow_from_ui.
+        # Chiamiamo prima per aggiornare i dati, poi salviamo.
+        self.update_workflow_from_ui(old_name)
+        self.save_workflows()
 
-        # Aggiorna la Listbox in modo reattivo
-        selected_index = self.workflows_listbox.curselection()
-        if selected_index:
-            self.workflows_listbox.delete(selected_index[0])
-            self.workflows_listbox.insert(selected_index[0], new_name)
-            self.workflows_listbox.selection_set(selected_index[0])
+        # Ricarichiamo la lista per riflettere il cambiamento.
+        self.populate_workflows_list()
+
+        # Riselezioniamo il flusso con il nuovo nome.
+        try:
+            sorted_workflows = sorted(self.workflows.keys())
+            new_index = sorted_workflows.index(new_name)
+            self.workflows_listbox.selection_set(new_index)
+            self.workflows_listbox.activate(new_index)
+            self.workflows_listbox.see(new_index)
+        except ValueError:
+            logging.warning(f"Impossibile trovare il flusso rinominato '{new_name}' nella lista.")
 
     def display_log_record(self, record):
         """Aggiunge un record di log al widget di testo."""
