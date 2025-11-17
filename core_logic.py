@@ -74,6 +74,12 @@ def execute_flow(flow_name, tasks):
         task_name = task.get('name', 'Task Senza Nome')
         task_path = task.get('path', '')
 
+        # Controlla se il task è abilitato. Per retrocompatibilità, se la chiave 'enabled'
+        # non esiste, il task viene considerato abilitato.
+        if not task.get('enabled', True):
+            logging.info(f"[{flow_name}] Task '{task_name}' saltato perché disabilitato.")
+            continue
+
         logging.info(f"[{flow_name}] Esecuzione task {i+1}/{len(tasks)} '{task_name}': '{task_path}'...")
 
         if not task_path or not os.path.exists(task_path):

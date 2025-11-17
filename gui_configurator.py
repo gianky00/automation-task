@@ -175,6 +175,9 @@ class WorkflowConfiguratorApp:
         self.tasks_tree.column("min_time", width=100, anchor=tk.E)
         self.tasks_tree.column("max_time", width=100, anchor=tk.E)
 
+        # Configura i tag per lo stile dei task disabilitati
+        self.tasks_tree.tag_configure('disabled', foreground='gray', font=('Arial', 10, 'overstrike'))
+
         self.tasks_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.tasks_tree.bind("<Double-1>", self.edit_selected_task)
 
@@ -184,7 +187,12 @@ class WorkflowConfiguratorApp:
         ttk.Button(task_buttons_frame, text="Importa Task da XML...", command=self.import_task_from_xml).pack(fill=tk.X, pady=2)
         ttk.Button(task_buttons_frame, text="Importa da Cartella...", command=self.import_tasks_from_folder).pack(fill=tk.X, pady=2)
         ttk.Button(task_buttons_frame, text="Rimuovi Task", command=self.remove_task).pack(fill=tk.X, pady=2)
-        ttk.Separator(task_buttons_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+
+        # Separatore e nuovo pulsante per abilitare/disabilitare
+        ttk.Separator(task_buttons_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=5)
+        ttk.Button(task_buttons_frame, text="Abilita/Disabilita Task", command=self.toggle_task_enabled).pack(fill=tk.X, pady=2)
+        ttk.Separator(task_buttons_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=5)
+
         ttk.Button(task_buttons_frame, text="Sposta Su", command=self.move_task_up).pack(fill=tk.X, pady=2)
         ttk.Button(task_buttons_frame, text="Sposta Giù", command=self.move_task_down).pack(fill=tk.X, pady=2)
 
@@ -209,8 +217,11 @@ class WorkflowConfiguratorApp:
         action_frame = ttk.Frame(right_pane)
         action_frame.pack(fill=tk.X, pady=10)
 
-        run_now_button = ttk.Button(action_frame, text="Esegui Ora", command=self.run_workflow_now)
+        run_now_button = ttk.Button(action_frame, text="Esegui Flusso", command=self.run_workflow_now)
         run_now_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
+
+        run_selected_button = ttk.Button(action_frame, text="Esegui Task Selezionato", command=self.run_selected_task)
+        run_selected_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
 
         save_button = ttk.Button(action_frame, text="SALVA TUTTE LE MODIFICHE", command=self.save_workflows)
         save_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5, 0))
@@ -291,7 +302,10 @@ class WorkflowConfiguratorApp:
             min_t = format_duration(stats.get('min'))
             max_t = format_duration(stats.get('max'))
 
-            self.tasks_tree.insert("", tk.END, values=(task_name, min_t, max_t))
+            # Applica il tag 'disabled' se il task non è abilitato
+            tags = () if task.get('enabled', True) else ('disabled',)
+
+            self.tasks_tree.insert("", tk.END, values=(task_name, min_t, max_t), tags=tags)
 
         hour, minute = map(int, flow_data.get("schedule_time", "00:00").split(':'))
         self.hour_spinbox.set(f"{hour:02}")
@@ -371,6 +385,34 @@ class WorkflowConfiguratorApp:
         execution_thread.daemon = True # Permette all'app di chiudersi anche se il thread è in esecuzione
         execution_thread.start()
 
+    def run_selected_task(self):
+        """Esegue solo il task attualmente selezionato nella Treeview."""
+        selected_items = self.tasks_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Azione non permessa", "Seleziona un task da eseguire.")
+            return
+
+        if len(selected_items) > 1:
+            messagebox.showwarning("Azione non permessa", "Puoi eseguire solo un task alla volta.")
+            return
+
+        index = self.tasks_tree.index(selected_items[0])
+        task_data = self.current_tasks[index]
+        task_name = task_data.get('name', 'Task Senza Nome')
+
+        # Pulisci i log precedenti
+        self.log_widget.configure(state='normal')
+        self.log_widget.delete('1.0', tk.END)
+        self.log_widget.configure(state='disabled')
+
+        # Esegui il singolo task in un thread
+        execution_thread = threading.Thread(
+            target=execute_flow,
+            args=(f"Task Singolo: {task_name}", [task_data]) # Passa una lista con solo il task selezionato
+        )
+        execution_thread.daemon = True
+        execution_thread.start()
+
     def import_task_from_xml(self):
         if not self.selected_workflow_name:
             messagebox.showwarning("Azione non permessa", "Seleziona prima un flusso di lavoro a cui aggiungere il task.")
@@ -387,7 +429,7 @@ class WorkflowConfiguratorApp:
             # Usa il nome del file (senza estensione) come nome del task
             task_name = os.path.splitext(os.path.basename(filepath))[0]
 
-            new_task = {'name': task_name, 'path': task_path}
+            new_task = {'name': task_name, 'path': task_path, 'enabled': True}
             self.current_tasks.append(new_task)
             self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
 
@@ -417,7 +459,7 @@ class WorkflowConfiguratorApp:
                     task_path = _parse_task_path_from_xml(filepath)
                     task_name = os.path.splitext(filename)[0]
 
-                    new_task = {'name': task_name, 'path': task_path}
+                    new_task = {'name': task_name, 'path': task_path, 'enabled': True}
                     self.current_tasks.append(new_task)
                     self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
                     success_count += 1
@@ -484,7 +526,7 @@ class WorkflowConfiguratorApp:
                 task_path = filepath
 
             task_name = os.path.splitext(os.path.basename(task_path))[0]
-            new_task = {'name': task_name, 'path': task_path}
+            new_task = {'name': task_name, 'path': task_path, 'enabled': True}
             self.current_tasks.append(new_task)
             self.tasks_tree.insert("", tk.END, values=(new_task['name'], "", ""))
 
@@ -501,6 +543,24 @@ class WorkflowConfiguratorApp:
         # Rimuovi gli elementi dalla Treeview
         for item in selected_items:
             self.tasks_tree.delete(item)
+
+    def toggle_task_enabled(self):
+        """Inverte lo stato 'enabled' dei task selezionati."""
+        selected_items = self.tasks_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Azione non permessa", "Seleziona almeno un task da abilitare o disabilitare.")
+            return
+
+        for item in selected_items:
+            index = self.tasks_tree.index(item)
+            task_data = self.current_tasks[index]
+
+            # Inverte lo stato. Se la chiave non esiste, la imposta a False (disabilitato).
+            is_currently_enabled = task_data.get('enabled', True)
+            task_data['enabled'] = not is_currently_enabled
+
+        # Aggiorna la visualizzazione per riflettere il nuovo stato
+        self.populate_workflow_details(self.selected_workflow_name)
 
 
     def move_task_up(self):
