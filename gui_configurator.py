@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import json
 import os
+import csv
+import io
 import xml.etree.ElementTree as ET
 import re
 import threading
@@ -143,6 +145,9 @@ class WorkflowConfiguratorApp:
         btn_frame_workflows.pack(fill=tk.X, pady=5)
         ttk.Button(btn_frame_workflows, text="Aggiungi Nuovo", command=self.add_new_workflow).pack(side=tk.LEFT, expand=True, fill=tk.X)
         ttk.Button(btn_frame_workflows, text="Rimuovi", command=self.delete_selected_workflow).pack(side=tk.LEFT, expand=True, fill=tk.X)
+        
+        # Pulsante Importa da Windows
+        ttk.Button(left_pane, text="Importa da Windows...", command=self.import_windows_tasks_dialog).pack(fill=tk.X, pady=(0, 5))
 
         # --- Pannello Destro: Dettagli Flusso ---
         details_frame = ttk.LabelFrame(right_pane, text="Dettagli Flusso", padding="10")
@@ -288,7 +293,7 @@ class WorkflowConfiguratorApp:
         if status == 'running':
             running_flows = status_info.get('data', {}).get('running_flows', [])
             if running_flows:
-                status_text += f"IN ESECUZIONE ({len(running_flows)} flussi: {', '.join(running_flows)})
+                status_text += f"IN ESECUZIONE ({len(running_flows)} flussi: {', '.join(running_flows)})"
                 status_color = "blue"
             else:
                 status_text += "IN ESECUZIONE (in attesa)"
@@ -779,6 +784,188 @@ class WorkflowConfiguratorApp:
             ):
                 return  # L'utente ha scelto di non chiudere
         self.root.destroy()
+
+    def _fetch_windows_tasks(self):
+        """Esegue schtasks ed estrae i task non di sistema, filtrando duplicati."""
+        try:
+            # Esegue il comando per ottenere CSV
+            # Rimuoviamo /NH per avere l'header e identificare le colonne correttamente
+            cmd = ["schtasks", "/Query", "/FO", "CSV", "/V"]
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='mbcs', check=True)
+            
+            tasks = []
+            seen_tasks = set() # Per gestire i duplicati (es. stesso task con trigger multipli)
+
+            reader = csv.reader(io.StringIO(result.stdout))
+            
+            # Legge l'header
+            headers = next(reader, None)
+            if not headers: 
+                logging.error("Schtasks non ha restituito intestazioni.")
+                return []
+
+            # Identificazione dinamica colonne
+            idx_name = -1
+            idx_cmd = -1
+
+            logging.info(f"Header schtasks trovati: {headers}")
+
+            for i, h in enumerate(headers):
+                h_lower = h.lower()
+                # Cerca colonna Nome
+                if "nome attivit" in h_lower or "taskname" in h_lower:
+                    idx_name = i
+                # Cerca colonna Comando (Task To Run / Attività da eseguire)
+                elif ("attivit" in h_lower and "eseguire" in h_lower) or ("task" in h_lower and "run" in h_lower):
+                    idx_cmd = i
+            
+            # Fallback euristico se i nomi header non corrispondono
+            if idx_name == -1: idx_name = 1
+            if idx_cmd == -1: idx_cmd = 8 # Solitamente 8 in output standard CSV verbose
+
+            logging.info(f"Indici colonne rilevati -> Nome: {idx_name}, Comando: {idx_cmd}")
+
+            for row in reader:
+                # Controllo validità riga
+                if len(row) <= max(idx_name, idx_cmd): 
+                    continue
+                
+                raw_name = row[idx_name]
+                task_cmd = row[idx_cmd]
+
+                # Filtra task di sistema Microsoft/Windows
+                if raw_name.startswith("\\Microsoft\\Windows"):
+                    continue
+                if not task_cmd or task_cmd == "N/D":
+                    continue
+                
+                # Pulisci il nome (togli backslash iniziale)
+                display_name = raw_name.lstrip('\\')
+
+                # DEDUPLICAZIONE:
+                # I task appaiono multiple volte se hanno più trigger.
+                # Usiamo il nome come chiave univoca.
+                if display_name in seen_tasks:
+                    continue
+                
+                seen_tasks.add(display_name)
+                
+                tasks.append({
+                    'name': display_name,
+                    'command': task_cmd
+                })
+                
+            return tasks
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Errore schtasks: {e}")
+            messagebox.showerror("Errore", f"Impossibile leggere i task di Windows.\n{e}")
+            return []
+        except Exception as e:
+            logging.error(f"Errore inatteso lettura task: {e}")
+            return []
+
+    def import_windows_tasks_dialog(self):
+        """Mostra finestra di dialogo per importare task di Windows."""
+        tasks = self._fetch_windows_tasks()
+        if not tasks:
+            messagebox.showinfo("Info", "Nessun task importabile trovato (o errore di lettura).")
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Importa Task da Windows")
+        dialog.geometry("600x500")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        lbl = ttk.Label(dialog, text="Seleziona i task da importare come nuovi Flussi:", font=("Arial", 10, "bold"))
+        lbl.pack(pady=10, padx=10, anchor=tk.W)
+
+        # Frame con scrollbar per la lista
+        list_frame = ttk.Frame(dialog)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        canvas = tk.Canvas(list_frame)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Checkbox dinamiche
+        self.import_vars = []
+        for task in tasks:
+            var = tk.BooleanVar()
+            # Mostra nome e comando (troncato)
+            cmd_preview = (task['command'][:60] + '..') if len(task['command']) > 60 else task['command']
+            text = f"{task['name']}\n   ↳ {cmd_preview}"
+            
+            chk = ttk.Checkbutton(scrollable_frame, text=text, variable=var, onvalue=True, offvalue=False)
+            chk.pack(anchor=tk.W, pady=2)
+            self.import_vars.append((var, task))
+
+        def do_import():
+            count = 0
+            for var, task in self.import_vars:
+                if var.get():
+                    # Crea nuovo Workflow
+                    # 1. Trova nome univoco
+                    base_name = task['name'].replace('\\', '_') # Sanitize name
+                    new_wf_name = base_name
+                    suffix = 1
+                    while new_wf_name in self.workflows:
+                        new_wf_name = f"{base_name}_{suffix}"
+                        suffix += 1
+                    
+                    # 2. Crea struttura task. 
+                    # NOTA: I task di Windows sono spesso comandi complessi (es. "python script.py arg").
+                    # Il nostro sistema esegue comandi via subprocess, quindi possiamo provare a salvare l'intero comando come 'path'
+                    # oppure cercare di estrarre lo script. Per sicurezza, salviamo il comando grezzo.
+                    # Ma 'execute_flow' si aspetta 'path'.
+                    
+                    # Logica migliorativa: Se è uno script python noto, cerchiamo di pulirlo.
+                    path_val = task['command']
+                    
+                    # Tenta di pulire se il comando è racchiuso tra virgolette extra non necessarie
+                    if path_val.startswith('"') and path_val.endswith('"'):
+                         # Rimuove solo se non ci sono spazi interni che richiederebbero virgolette
+                         # Ma per sicurezza lasciamo stare, subprocess gestirà.
+                         pass
+
+                    new_workflow_data = {
+                        "schedule_time": "00:00", # Default manuale
+                        "schedule_days": [],      # Nessun giorno attivo
+                        "tasks": [
+                            {
+                                "name": "Azione Importata",
+                                "path": path_val,
+                                "enabled": True
+                            }
+                        ]
+                    }
+                    self.workflows[new_wf_name] = new_workflow_data
+                    count += 1
+            
+            if count > 0:
+                self._save_workflows_to_file()
+                self.populate_workflows_list()
+                messagebox.showinfo("Importazione Completata", f"Importati {count} nuovi flussi di lavoro.")
+                dialog.destroy()
+            else:
+                messagebox.showwarning("Nessuna Selezione", "Seleziona almeno un task da importare.")
+
+        btn_box = ttk.Frame(dialog)
+        btn_box.pack(pady=10)
+        ttk.Button(btn_box, text="Importa Selezionati", command=do_import).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_box, text="Annulla", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
 
 if __name__ == "__main__":
