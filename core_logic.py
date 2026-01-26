@@ -4,35 +4,76 @@ import subprocess
 import time
 import json
 import threading
+import shutil
+from pathlib import Path
 
-LOG_DIR = "logs"
-CONFIG_DIR = "config"
-LOG_FILE = os.path.join(LOG_DIR, "scheduler.log")
-STATS_FILE = os.path.join(CONFIG_DIR, "task_stats.json")
+# DETERMINAZIONE PERCORSI ASSOLUTI (FIX: Path Hell)
+BASE_DIR = Path(__file__).parent.absolute()
+LOG_DIR = BASE_DIR / "logs"
+CONFIG_DIR = BASE_DIR / "config"
+LOG_FILE = LOG_DIR / "scheduler.log"
+STATS_FILE = CONFIG_DIR / "task_stats.json"
 
-# Lock per garantire l'accesso thread-safe al file delle statistiche
+# Lock per garantire l'accesso thread-safe (intra-processo)
 _stats_lock = threading.Lock()
+_file_io_lock = threading.Lock() # Lock globale per I/O critico
+
+def safe_load_json(filepath, retries=3, delay=0.1):
+    """
+    Carica un file JSON gestendo potenziali conflitti di lettura/scrittura e file inesistenti.
+    """
+    path = Path(filepath)
+    if not path.exists():
+        return {}
+    
+    for attempt in range(retries):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                logging.error(f"Impossibile leggere il file JSON: {path}")
+                return {}
+    return {}
+
+def safe_save_json(filepath, data):
+    """
+    Salva un file JSON in modo atomico (Write-to-Temp -> Rename) per prevenire corruzione.
+    """
+    path = Path(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix('.tmp')
+
+    with _file_io_lock:
+        try:
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4)
+            # Operazione atomica (o quasi atomica su Windows)
+            shutil.move(str(temp_path), str(path))
+        except Exception as e:
+            logging.error(f"Errore nel salvataggio sicuro di {path}: {e}")
+            if temp_path.exists():
+                os.remove(temp_path)
 
 def _load_task_stats():
-    """Carica le statistiche dei task da un file JSON in modo thread-safe."""
+    """Carica le statistiche dei task usando il metodo sicuro."""
     with _stats_lock:
-        try:
-            with open(STATS_FILE, 'r') as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        # Convertiamo Path a stringa per compatibilità se necessario, ma json accetta Path
+        return safe_load_json(STATS_FILE)
 
 def _save_task_stats(stats):
-    """Salva le statistiche dei task su un file JSON in modo thread-safe."""
+    """Salva le statistiche dei task usando il metodo sicuro."""
     with _stats_lock:
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(STATS_FILE, 'w') as f:
-            json.dump(stats, f, indent=4)
+        safe_save_json(STATS_FILE, stats)
 
 def update_task_stats(task_path, duration):
     """Aggiorna le statistiche min/max per un dato task."""
     stats = _load_task_stats()
-    task_stats = stats.get(task_path, {})
+    # Usa stringa per la chiave del dizionario
+    task_key = str(task_path)
+    task_stats = stats.get(task_key, {})
 
     current_min = task_stats.get('min')
     current_max = task_stats.get('max')
@@ -43,13 +84,13 @@ def update_task_stats(task_path, duration):
     if current_max is None or duration > current_max:
         task_stats['max'] = duration
 
-    stats[task_path] = task_stats
+    stats[task_key] = task_stats
     _save_task_stats(stats)
 
 
 def setup_logging():
     """Configura il sistema di logging per scrivere su file e console."""
-    os.makedirs(LOG_DIR, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     # Rimuovi eventuali handler esistenti per evitare log duplicati
     for handler in logging.root.handlers[:]:
@@ -59,7 +100,7 @@ def setup_logging():
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.FileHandler(LOG_FILE),
+            logging.FileHandler(LOG_FILE, encoding='utf-8'),
             logging.StreamHandler()
         ]
     )

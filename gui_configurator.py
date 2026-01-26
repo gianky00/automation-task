@@ -10,12 +10,12 @@ import logging
 import subprocess
 import signal
 from datetime import datetime, timedelta
-from core_logic import setup_logging, execute_flow
+from core_logic import setup_logging, execute_flow, CONFIG_DIR, safe_load_json, safe_save_json, BASE_DIR
 
-CONFIG_DIR = "config"
-CONFIG_FILE = os.path.join(CONFIG_DIR, "workflows.json")
-STATUS_FILE = os.path.join(CONFIG_DIR, "scheduler_status.json")
-STATS_FILE = os.path.join(CONFIG_DIR, "task_stats.json")
+# Usa pathlib da core_logic per coerenza
+CONFIG_FILE = CONFIG_DIR / "workflows.json"
+STATUS_FILE = CONFIG_DIR / "scheduler_status.json"
+STATS_FILE = CONFIG_DIR / "task_stats.json"
 
 
 class QueueHandler(logging.Handler):
@@ -47,13 +47,13 @@ def _parse_task_path_from_xml(filepath):
 
     # Tenta di trovare il percorso prima negli argomenti
     if arguments_node is not None and arguments_node.text:
-        match = re.search(r'["\'](.*?\.(?:py|bat|ps1))["\']', arguments_node.text, re.IGNORECASE)
+        match = re.search(r'["\'](.*?".(?:py|bat|ps1))["\']', arguments_node.text, re.IGNORECASE)
         if match:
             return match.group(1)
 
     # Se non trovato, tenta nel comando (fallback)
     if command_node is not None and command_node.text:
-        match = re.search(r'["\']?(.*?\.(?:py|bat|ps1))["\']?', command_node.text, re.IGNORECASE)
+        match = re.search(r'["\']?(.*?".(?:py|bat|ps1))["\']?', command_node.text, re.IGNORECASE)
         if match:
             return match.group(1).strip()
 
@@ -84,7 +84,8 @@ class WorkflowConfiguratorApp:
         self.current_tasks = [] # Mantiene la lista di dizionari {'name': ..., 'path': ...}
 
         # 1. Configura il logging di base (file e console)
-        os.makedirs(CONFIG_DIR, exist_ok=True)
+        # CONFIG_DIR è già gestito da core_logic, ma assicuriamoci che esista
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         setup_logging()
 
         # 2. Aggiungi l'handler per la GUI
@@ -102,25 +103,16 @@ class WorkflowConfiguratorApp:
         self.root.after(100, self.update_status_bar) # Avvia subito il primo controllo
 
     def load_workflows(self):
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                self.workflows = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            self.workflows = {}
+        self.workflows = safe_load_json(CONFIG_FILE)
 
     def load_task_stats(self):
-        try:
-            with open(STATS_FILE, 'r') as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        return safe_load_json(STATS_FILE)
 
     def _save_workflows_to_file(self):
         """Salva la configurazione corrente dei flussi su file senza mostrare UI."""
         if self.selected_workflow_name:
             self.update_workflow_from_ui(self.selected_workflow_name)
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(self.workflows, f, indent=4)
+        safe_save_json(CONFIG_FILE, self.workflows)
 
 
     def create_widgets(self):
@@ -228,23 +220,23 @@ class WorkflowConfiguratorApp:
         Controlla lo stato dello scheduler leggendo il file di stato.
         Restituisce un dizionario con 'status' ('running', 'stopped', 'timeout') e 'pid'.
         """
+        status_data = safe_load_json(STATUS_FILE)
+        if not status_data:
+            return {'status': 'stopped', 'pid': None}
+
+        pid = status_data.get('pid')
+        if not pid:
+            return {'status': 'stopped', 'pid': None}
+
+        # Controlla se il timestamp è recente
         try:
-            with open(STATUS_FILE, 'r') as f:
-                status_data = json.load(f)
-
-            pid = status_data.get('pid')
-            if not pid:
-                return {'status': 'stopped', 'pid': None}
-
-            # Controlla se il timestamp è recente
             last_update = datetime.fromisoformat(status_data.get('timestamp'))
             if datetime.now() - last_update > timedelta(seconds=15): # Timeout più breve
                 return {'status': 'timeout', 'pid': pid}
+        except ValueError:
+            return {'status': 'timeout', 'pid': pid}
 
-            return {'status': 'running', 'pid': pid, 'data': status_data}
-
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {'status': 'stopped', 'pid': None}
+        return {'status': 'running', 'pid': pid, 'data': status_data}
 
     def toggle_scheduler(self):
         """Avvia o ferma il servizio scheduler."""
@@ -263,18 +255,22 @@ class WorkflowConfiguratorApp:
                         logging.info(f"Segnale di terminazione inviato allo scheduler (PID: {pid}).")
                     except (ProcessLookupError, PermissionError) as e:
                         logging.error(f"Impossibile terminare il processo {pid}: {e}.")
-                if os.path.exists(STATUS_FILE):
+                
+                # Rimozione sicura file stato
+                if STATUS_FILE.exists():
                     try:
                         os.remove(STATUS_FILE)
                     except OSError as e:
                         logging.error(f"Impossibile rimuovere il file di stato: {e}")
         else: # 'stopped'
             try:
+                scheduler_script = BASE_DIR / "scheduler_service.py"
                 # Usa pythonw per non aprire una console su Windows
-                command = ["pythonw", "scheduler_service.py"]
+                command = ["pythonw", str(scheduler_script)]
                 # DETACHED_PROCESS per rendere il processo indipendente dalla GUI
-                subprocess.Popen(command, creationflags=subprocess.DETACHED_PROCESS)
-                logging.info("Avvio dello scheduler in background...")
+                # Imposta cwd alla BASE_DIR per coerenza
+                subprocess.Popen(command, creationflags=subprocess.DETACHED_PROCESS, cwd=str(BASE_DIR))
+                logging.info(f"Avvio dello scheduler in background: {scheduler_script}")
             except Exception as e:
                 logging.error(f"Impossibile avviare lo scheduler: {e}")
                 messagebox.showerror("Errore", f"Impossibile avviare il servizio scheduler:\n{e}")
@@ -292,7 +288,7 @@ class WorkflowConfiguratorApp:
         if status == 'running':
             running_flows = status_info.get('data', {}).get('running_flows', [])
             if running_flows:
-                status_text += f"IN ESECUZIONE ({len(running_flows)} flussi: {', '.join(running_flows)})"
+                status_text += f"IN ESECUZIONE ({len(running_flows)} flussi: {', '.join(running_flows)})
                 status_color = "blue"
             else:
                 status_text += "IN ESECUZIONE (in attesa)"
@@ -345,7 +341,8 @@ class WorkflowConfiguratorApp:
             task_path = task.get('path', '')
             task_name = task.get('name', 'Task Senza Nome')
 
-            stats = self.task_stats.get(task_path, {})
+            # Conversione chiave a stringa per compatibilità
+            stats = self.task_stats.get(str(task_path), {})
             min_t = format_duration(stats.get('min'))
             max_t = format_duration(stats.get('max'))
 

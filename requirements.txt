@@ -1,0 +1,11 @@
+# Questo progetto utilizza solo librerie standard di Python.
+# Nessuna installazione esterna richiesta (pip install).
+#
+# Librerie utilizzate:
+# - tkinter (GUI)
+# - json (Config)
+# - threading (Concorrenza)
+# - subprocess (Esecuzione Task)
+# - logging (Log)
+# - pathlib (Gestione Percorsi)
+# - xml.etree.ElementTree (Importazione Task Scheduler)

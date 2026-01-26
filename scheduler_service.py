@@ -4,33 +4,34 @@ import os
 import threading
 import time
 from datetime import datetime
-from core_logic import setup_logging, execute_flow
+from core_logic import setup_logging, execute_flow, CONFIG_DIR, safe_load_json, safe_save_json
 
-CONFIG_DIR = "config"
-CONFIG_FILE = os.path.join(CONFIG_DIR, "workflows.json")
-STATUS_FILE = os.path.join(CONFIG_DIR, "scheduler_status.json")
+# Definizioni Percorsi usando pathlib da core_logic
+CONFIG_FILE = CONFIG_DIR / "workflows.json"
+STATUS_FILE = CONFIG_DIR / "scheduler_status.json"
 
 # Stato condiviso per i flussi attivi
 _active_flows = set()
 _status_lock = threading.Lock()
 
 def _update_status_file():
-    """Scrive lo stato corrente (PID, flussi attivi) nel file di stato."""
+    """Scrive lo stato corrente (PID, flussi attivi) nel file di stato in modo sicuro."""
     with _status_lock:
         status = {
             'pid': os.getpid(),
             'running_flows': list(_active_flows),
             'timestamp': datetime.now().isoformat()
         }
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(STATUS_FILE, 'w') as f:
-            json.dump(status, f, indent=4)
+        safe_save_json(STATUS_FILE, status)
 
 def _clear_status_file():
     """Rimuove il file di stato, se esiste."""
     with _status_lock:
-        if os.path.exists(STATUS_FILE):
-            os.remove(STATUS_FILE)
+        if STATUS_FILE.exists():
+            try:
+                os.remove(STATUS_FILE)
+            except OSError as e:
+                logging.error(f"Errore rimozione file stato: {e}")
 
 def flow_execution_wrapper(flow_name, tasks):
     """
@@ -47,7 +48,8 @@ def flow_execution_wrapper(flow_name, tasks):
     finally:
         # Assicura la rimozione dallo stato anche in caso di errore
         with _status_lock:
-            _active_flows.remove(flow_name)
+            if flow_name in _active_flows:
+                _active_flows.remove(flow_name)
         _update_status_file()
 
 def scheduler_service():
@@ -63,13 +65,11 @@ def scheduler_service():
 
         while True:
             try:
-                try:
-                    with open(CONFIG_FILE, 'r') as f:
-                        workflows = json.load(f)
-                except (FileNotFoundError, json.JSONDecodeError):
-                    logging.warning("File di configurazione non trovato o corrotto. Riprovo tra 60 secondi.")
-                    time.sleep(60)
-                    continue
+                # Usa caricamento sicuro con retry automatici
+                workflows = safe_load_json(CONFIG_FILE)
+                if not workflows:
+                    # Se vuoto o errore lettura, riprova dopo breve pausa ma non bloccare loop
+                    logging.debug("Nessun workflow caricato o config vuoto.")
 
                 now = datetime.now()
                 current_time = now.strftime("%H:%M")
