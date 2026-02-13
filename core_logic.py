@@ -123,14 +123,14 @@ def execute_flow(flow_name, tasks):
 
         logging.info(f"[{flow_name}] Esecuzione task {i+1}/{len(tasks)} '{task_name}': '{task_path}'...")
 
-        if not task_path or not os.path.exists(task_path):
-            logging.error(f"[{flow_name}] ERRORE: Il file del task '{task_name}' ('{task_path}') non è stato trovato. Interruzione del flusso.")
-            break
+        # Verifica esistenza file. Se non esiste, potrebbe essere un comando completo (es. importato da Task Scheduler).
+        is_file = os.path.exists(task_path)
+        
+        command = []
+        use_shell = False
 
-        try:
-            command = []
+        if is_file:
             file_extension = os.path.splitext(task_path)[1].lower()
-
             if file_extension == '.py':
                 command = ["python", task_path]
             elif file_extension == '.bat':
@@ -138,42 +138,51 @@ def execute_flow(flow_name, tasks):
             elif file_extension == '.ps1':
                 command = ["powershell", "-ExecutionPolicy", "Bypass", "-File", task_path]
             else:
-                logging.error(f"[{flow_name}] ERRORE: Tipo di file non supportato '{file_extension}' per il task '{task_name}'. Salto.")
-                continue
+                # Fallback per file sconosciuti: prova ad eseguirli direttamente
+                command = [task_path]
+        else:
+            # Se il percorso non esiste come file, assumiamo sia un comando completo (es. "python script.py")
+            # Messaggio pulito invece del warning precedente
+            logging.info(f"[{flow_name}] Modalità Comando: '{task_path}'")
+            command = task_path
+            use_shell = True
 
+        try:
             start_time = time.monotonic()
-            result = subprocess.run(
+            
+            # Usa Popen per streaming in tempo reale dei log
+            process = subprocess.Popen(
                 command,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, # Redireziona stderr su stdout per un unico stream ordinato
+                shell=use_shell,
                 text=True,
-                check=False,
-                encoding='utf-8',
-                errors='replace'
+                encoding='utf-8', # Tenta UTF-8
+                errors='replace', # Sostituisce caratteri non decodificabili invece di crashare
+                bufsize=1 # Line buffered
             )
+
+            # Leggi e logga l'output riga per riga
+            for line in process.stdout:
+                clean_line = line.strip()
+                if clean_line:
+                    logging.info(f"[{flow_name}] > {clean_line}")
+
+            # Attendi la fine del processo
+            return_code = process.wait()
             end_time = time.monotonic()
             duration = end_time - start_time
 
-            if result.stdout:
-                logging.info(f"[{flow_name}] Output del task '{task_name}':\n{result.stdout.strip()}")
-
-            if result.returncode == 0:
+            if return_code == 0:
                 logging.info(f"[{flow_name}] Task '{task_name}' completato con successo in {duration:.2f} secondi.")
-                update_task_stats(task_path, duration) # Aggiorna le statistiche
+                update_task_stats(task_path, duration)
                 if i < len(tasks) - 1:
                     next_task_name = tasks[i+1].get('name', 'Task Senza Nome')
                     logging.info(f"[{flow_name}] Prossimo task: '{next_task_name}'")
             else:
-                # Se il task fallisce, logga tutto l'output e interrompi il flusso
-                logging.error(f"[{flow_name}] ERRORE: Task '{task_name}' terminato con codice {result.returncode} dopo {duration:.2f} secondi.")
-
-                # Logga sia stdout che stderr perché l'errore può finire in entrambi
-                if result.stdout:
-                    logging.error(f"[{flow_name}] Output standard del task '{task_name}':\n{result.stdout.strip()}")
-                if result.stderr:
-                    logging.error(f"[{flow_name}] Errore standard del task '{task_name}':\n{result.stderr.strip()}")
-
-                logging.critical(f"[{flow_name}] FLUSSO INTERROTTO a causa di un errore nel task '{task_name}'. I task successivi non verranno eseguiti.")
-                break # Interrompe il ciclo for
+                logging.error(f"[{flow_name}] ERRORE: Task '{task_name}' terminato con codice {return_code} dopo {duration:.2f} secondi.")
+                logging.critical(f"[{flow_name}] FLUSSO INTERROTTO a causa di un errore nel task '{task_name}'.")
+                break 
 
         except Exception as e:
             logging.critical(f"[{flow_name}] Errore critico durante l'esecuzione del task '{task_name}': {e}")
