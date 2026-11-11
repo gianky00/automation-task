@@ -1,46 +1,62 @@
-# Automation Task - Pianificatore di Flussi Sequenziali
+# Automation Task — Sequential Workflow Scheduler & Orchestrator
 
-Questo progetto è un'applicazione Python per creare, pianificare ed eseguire flussi di lavoro composti da più task. È progettato per garantire che i task all'interno di un flusso vengano eseguiti in modo **strettamente sequenziale**, dove un task inizia solo dopo che il precedente è terminato.
+![Python](https://img.shields.io/badge/Python-3.10+%20(Zero%20External%20Deps)-3776AB?style=flat-square&logo=python&logoColor=white)
+![Concurrency](https://img.shields.io/badge/Concurrency-Thread--Safe%20Atomic%20I%2FO-0284C7?style=flat-square)
+![Platform](https://img.shields.io/badge/Platform-Windows%20Desktop%20%26%20Service-0F172A?style=flat-square)
 
-## Architettura
+Sistema leggero di orchestrazione e scheduling sviluppato interamente con la **Standard Library di Python** per configurare, pianificare ed eseguire **flussi di lavoro strettamente sequenziali** (pipeline di script Python, batch o task importati dall'Utilità di Pianificazione di Windows).
 
-Il sistema è diviso in due componenti principali:
+---
 
-1.  **Configuratore GUI (`gui_configurator.py`)**
-    - Un'interfaccia grafica creata con Tkinter che permette di:
-        - Creare e gestire più flussi di lavoro.
-        - Aggiungere, rimuovere e riordinare task (script Python) per ogni flusso.
-        - Impostare una pianificazione precisa (ora e giorni della settimana) per l'esecuzione automatica.
-    - Tutte le configurazioni vengono salvate in un file `config/workflows.json`.
+## Caratteristiche Tecniche
 
-2.  **Servizio Scheduler (`scheduler_service.py`)**
-    - Uno script autonomo progettato per essere eseguito in background 24/7.
-    - Legge periodicamente il file `config/workflows.json` per caricare le pianificazioni.
-    - Avvia i flussi di lavoro all'orario e nei giorni specificati.
-    - Gestisce l'esecuzione sequenziale dei task e registra tutte le operazioni nel file `logs/scheduler.log`.
+- **Esecuzione Sequenziale Garantita (`core_logic.py`):** Ogni flusso di lavoro esegue i propri task in cascata rigorosa: lo step successivo viene avviato solo al completamento del precedente, evitando race condition su file Excel o database condivisi.
+- **Persistenza Atomica Thread-Safe (`safe_save_json`):** Tutte le scritture dei file di stato e delle statistiche utilizzano il pattern transazionale *Write-to-Temp & Atomic Rename* protetto da lock (`threading.Lock`) per prevenire qualsiasi corruzione dei file JSON durante accessi concorrenti tra GUI e servizio di background.
+- **Importazione Nativa Task Windows (`_parse_task_path_from_xml`):** Parsing diretto dei file `.xml` esportati dal *Windows Task Scheduler* per convertire rapidamente attività legacy in pipeline gestite.
+- **Architettura Disaccoppiata (GUI + Background Service):**
+  - `gui_configurator.py`: Interfaccia desktop con coda di logging in tempo reale (`QueueHandler`) per creare i flussi, riordinare i task, impostare giorni/orari di esecuzione e monitorare le statistiche.
+  - `scheduler_service.py`: Demone leggero progettato per restare attivo in background, verificare le pianificazioni in `config/workflows.json` e tracciare i flussi attivi con PID in `scheduler_status.json`.
 
-## Come Avviare l'Applicazione (Windows)
+---
 
-Per semplificare l'avvio, sono stati forniti due script batch.
+## Struttura del Progetto
 
-### 1. Avviare il Configuratore GUI
+```text
+automation-task/
+├── config/
+│   └── workflows.json          # Definizione dei flussi, sequenza task e pianificazione oraria
+├── scripts/
+│   └── install_autostart.py    # Configurazione avvio automatico del servizio su Windows
+├── tests/
+│   ├── test_core_logic.py      # Test unitari su esecuzione flussi e I/O atomico
+│   ├── test_scheduler_service.py
+│   └── verify_concurrency.py   # Stress test di concorrenza e thread-safety
+├── core_logic.py               # Motore di esecuzione, gestione lock e salvataggio atomico
+├── gui_configurator.py         # Interfaccia grafica di configurazione e monitoraggio
+├── scheduler_service.py        # Servizio di scheduling in background
+└── start_gui.bat               # Avvio rapido dell'interfaccia senza finestra console
+```
 
-Per creare o modificare i flussi di lavoro, esegui:
+---
 
-```batch
+## Avvio e Test
+
+Non è richiesta alcuna dipendenza esterna (`pip install` non necessario per il runtime).
+
+```powershell
+# Avvio del configuratore grafico
 start_gui.bat
+# oppure:
+python gui_configurator.py
+
+# Avvio del servizio di scheduling in background
+python scheduler_service.py
+
+# Esecuzione dei test unitari e di concorrenza
+python -m unittest discover -s tests
 ```
 
-Questo comando aprirà l'interfaccia grafica. Grazie all'uso di `pythonw.exe`, la finestra del prompt dei comandi non rimarrà visibile.
+---
 
-### 2. Avviare il Servizio di Scheduling
-
-Affinché i flussi vengano eseguiti automaticamente, il servizio di scheduling deve essere in esecuzione. Per avviarlo, esegui:
-
-```batch
-start_scheduler.bat
-```
-
-Questo comando aprirà una **nuova finestra di console** dove potrai vedere i log del servizio in tempo reale. Puoi minimizzare questa finestra e lasciarla in esecuzione in background.
-
-**Importante:** Il servizio scheduler deve rimanere in esecuzione per garantire che i tuoi flussi di lavoro vengano attivati come pianificato.
+## Autore
+Progettato e sviluppato da **Giancarlo Allegretti** — *Industrial Automation, Instrumentation & AI Software Engineering*.
